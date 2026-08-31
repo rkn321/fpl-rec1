@@ -1,0 +1,98 @@
+# FPL prediction model configuration.
+# Everything the pipeline needs that is not code lives here.
+
+season:
+  # Season currently being played. Predictions are produced for this season.
+  current: "2026-27"
+  # Historical seasons pulled from the vaastav dataset and used for training
+  # and walk-forward backtesting. Ordered oldest -> newest.
+  # NOTE: `defensive_contribution` / DEFCON stats only exist from 2025-26 on.
+  history:
+    - "2024-25"
+    - "2025-26"
+
+paths:
+  data_dir: "data"
+  cache_dir: "data/cache"
+  processed_dir: "data/processed"
+
+api:
+  base_url: "https://fantasy.premierleague.com/api/"
+  # Cache TTL per endpoint family, in seconds.
+  ttl:
+    bootstrap-static: 3600
+    fixtures: 3600
+    element-summary: 3600
+    event-live: 300
+    default: 3600
+  max_retries: 5
+  backoff_base: 1.0      # seconds; exponential -> base * 2**attempt (+ jitter)
+  backoff_max: 30.0
+  timeout: 30
+  # Concurrency for the 600+ element-summary calls. Keep modest: be polite.
+  max_workers: 8
+  user_agent: "fpl-pred1/0.1 (research; contact via repo)"
+
+historical:
+  vaastav_base: "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data"
+
+features:
+  # Rolling windows (in prior fixtures) used for form features.
+  windows: [3, 5, 10]
+  # Include season-to-date expanding means alongside the fixed windows.
+  expanding: true
+  # Minimum minutes in a fixture for it to count as an "appearance".
+  appearance_minutes: 1
+
+# Your team. Set once here instead of passing --squad and --bank every time;
+# any CLI flag still overrides what is written here.
+#
+# This only seeds the page on a *first* visit. Once you have opened it, the
+# squad lives in your browser, so transfers you apply on the page survive a
+# rebuild and are not overwritten by this list. Use the page's "Copy squad"
+# button to bring it back in sync when you want to.
+squad:
+  # Names are fuzzy-matched against the FPL player list and disambiguated by
+  # squad shape, so surnames are usually enough. A comma-separated string works
+  # here too, which is what "Copy squad" puts on your clipboard.
+  players:
+    - haaland
+    - joao pedro
+    - gibbs-white
+    - ndiaye
+    - cherki
+    - szoboszlai
+    - mbeumo
+    - guehi
+    - calafiori
+    - pedro porro
+    - raya
+    - steele
+    - de cuyper
+    - herrington
+    - walle egell
+
+  # Armbands. Carried across rebuilds so the auto-XI does not reassign them.
+  captain: haaland
+  vice: mbeumo
+
+  # Free transfers in hand. Only used when seeding a browser that has no saved
+  # squad — the page tracks this itself once you are using it. Set to 0 here
+  # because the GW3 transfers used the free one and took a -4 for the second.
+  free_transfers: 0
+
+  # Your actual bank, in millions. This cannot be derived from prices: it
+  # depends on what you paid for your players, not what they cost now.
+  bank: 0.4
+
+  # Gameweeks of fixtures to load for the planning view.
+  horizon: 5
+
+evaluate:
+  # Walk-forward: train on GW <= t, predict GW t+1. Start once this many
+  # gameweeks of history exist within the season.
+  min_train_gws: 4
+  # Evaluate only players with a non-trivial chance of playing, in addition to
+  # the all-players view. `null` disables the filter.
+  min_price: null
+  seed: 7

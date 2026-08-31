@@ -1,0 +1,52 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // F5 — step through the export with breakpoints in src/frontend.py.
+      "name": "Export frontend",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.cli",
+      "args": ["export-frontend", "--open"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Export frontend (verbose)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.cli",
+      "args": ["-v", "export-frontend"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Backtest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.cli",
+      "args": ["backtest"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Build features",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.cli",
+      "args": ["-v", "build-features"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug the open test file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-vv"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  // Use the project's virtualenv, so the integrated terminal and the test
+  // explorer both see pandas, requests and the rest without any activation step.
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+
+  // The generated page is a 500KB build artifact with the whole player pool
+  // inlined; editing it by hand is always a mistake. Edit template.html.
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "frontend/squad-picker.html": true,
+    "data/**": true,
+    ".venv/**": true
+  },
+
+  "[python]": {
+    "editor.rulers": [95]
+  }
+}

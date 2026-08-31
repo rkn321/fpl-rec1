@@ -1,0 +1,2423 @@
+<title>Squad Deadline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ------------------------------------------------------------------ tokens */
+:root {
+  --ground: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f6f8fa;
+  --ink: #0f1a24;
+  --ink-muted: #5b6b7a;
+  --ink-faint: #8695a3;
+  --line: #d3dbe2;
+  --line-strong: #b7c3cd;
+
+  --accent: #00694e;
+  --accent-ink: #ffffff;
+  --accent-soft: #d9ebe4;
+
+  --pitch-1: #0a6b50;
+  --pitch-2: #075740;
+  --pitch-line: rgba(255, 255, 255, 0.22);
+
+  --brass: #9a7b12;
+  --brass-bg: #f6ecc7;
+  --warn: #b4690e;
+  --warn-bg: #fbeed8;
+  --danger: #b3261e;
+  --danger-bg: #fbe3e1;
+  --good: #14614a;
+  --good-bg: #dcefe7;
+
+  --shadow: 0 1px 2px rgba(15, 26, 36, .06), 0 6px 16px rgba(15, 26, 36, .06);
+  --radius: 10px;
+
+  --font-display: "Barlow Condensed", "Arial Narrow", Haettenschweiler, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0c1418;
+    --surface: #132029;
+    --surface-2: #182833;
+    --ink: #e6edf2;
+    --ink-muted: #9bb0be;
+    --ink-faint: #6f8695;
+    --line: #243642;
+    --line-strong: #334c5c;
+
+    --accent: #3fbf97;
+    --accent-ink: #04211a;
+    --accent-soft: #12332a;
+
+    --pitch-1: #0d4c3b;
+    --pitch-2: #08382c;
+    --pitch-line: rgba(255, 255, 255, 0.16);
+
+    --brass: #e0bb52;
+    --brass-bg: #3a3016;
+    --warn: #e39b3c;
+    --warn-bg: #3b2a12;
+    --danger: #f0857c;
+    --danger-bg: #3d1a17;
+    --good: #4fc79c;
+    --good-bg: #10322a;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 22px rgba(0, 0, 0, .35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0c1418;
+  --surface: #132029;
+  --surface-2: #182833;
+  --ink: #e6edf2;
+  --ink-muted: #9bb0be;
+  --ink-faint: #6f8695;
+  --line: #243642;
+  --line-strong: #334c5c;
+
+  --accent: #3fbf97;
+  --accent-ink: #04211a;
+  --accent-soft: #12332a;
+
+  --pitch-1: #0d4c3b;
+  --pitch-2: #08382c;
+  --pitch-line: rgba(255, 255, 255, 0.16);
+
+  --brass: #e0bb52;
+  --brass-bg: #3a3016;
+  --warn: #e39b3c;
+  --warn-bg: #3b2a12;
+  --danger: #f0857c;
+  --danger-bg: #3d1a17;
+  --good: #4fc79c;
+  --good-bg: #10322a;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 22px rgba(0, 0, 0, .35);
+}
+
+/* ------------------------------------------------------------------- base */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- top bar */
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+}
+
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
+
+.brand h1 {
+  font-family: var(--font-display);
+  font-size: 27px; font-weight: 700; letter-spacing: .02em;
+  margin: 0; text-transform: uppercase;
+}
+
+.brand .gw {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--accent-ink); background: var(--accent);
+  padding: 2px 9px; border-radius: 4px;
+}
+
+.brand .deadline { font-size: 12px; color: var(--ink-faint); }
+
+/* The ledger: money and transfer allowance, always visible. */
+.ledger { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.stat {
+  min-width: 84px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.stat .k {
+  display: block;
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.stat .v { font-family: var(--font-mono); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.stat.is-warn { border-color: var(--warn); background: var(--warn-bg); }
+.stat.is-warn .v, .stat.is-warn .k { color: var(--warn); }
+.stat.is-danger { border-color: var(--danger); background: var(--danger-bg); }
+.stat.is-danger .v, .stat.is-danger .k { color: var(--danger); }
+.stat.is-good { border-color: var(--good); background: var(--good-bg); }
+.stat.is-good .v { color: var(--good); }
+
+/* ---------------------------------------------------------------- layout */
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(392px, 452px);
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+@media (max-width: 1020px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-head h2 {
+  font-family: var(--font-display);
+  font-size: 19px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  margin: 0; margin-right: auto;
+}
+
+/* --------------------------------------------------------------- buttons */
+.btn {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 13px; font-weight: 500;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover { background: var(--surface-2); border-color: var(--ink-faint); }
+.btn[disabled] { opacity: .42; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+.btn-danger { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
+
+/* ----------------------------------------------------------------- pitch */
+.pitch {
+  background: linear-gradient(170deg, var(--pitch-1), var(--pitch-2));
+  padding: 18px 10px 12px;
+  display: flex; flex-direction: column; gap: 12px;
+  position: relative;
+}
+
+/* Pitch markings, drawn rather than decorated onto the surface. */
+.pitch::before {
+  content: ""; position: absolute; inset: 8px;
+  border: 2px solid var(--pitch-line);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.pitch::after {
+  content: ""; position: absolute;
+  left: 50%; top: 8px; transform: translateX(-50%);
+  width: 148px; height: 54px;
+  border: 2px solid var(--pitch-line);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  pointer-events: none;
+}
+
+.row {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
+  position: relative; z-index: 1;
+}
+
+.bench {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
+  padding: 12px 10px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+}
+
+.bench-label {
+  width: 100%; text-align: center;
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 2px;
+}
+
+/* ------------------------------------------------------------ squad card */
+.card {
+  width: 88px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 4px 4px;
+  text-align: center;
+  position: relative;
+  transition: transform .12s, box-shadow .12s;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.22); }
+
+.card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.card.is-swappable { border-color: var(--accent); border-style: dashed; }
+
+.card .nm {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 600; letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.card .meta {
+  display: flex; justify-content: center; gap: 5px;
+  font-size: 10px; color: var(--ink-faint);
+  letter-spacing: .04em; text-transform: uppercase;
+}
+
+.card .figs {
+  display: flex; justify-content: space-between;
+  margin-top: 3px; padding-top: 3px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.card .figs .ep { color: var(--accent); font-weight: 600; }
+
+.card .fix { font-size: 10px; color: var(--ink-faint); font-family: var(--font-mono); }
+
+/* Position colour-coding on the card's top edge, so shape reads at a glance. */
+.card::before {
+  content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 3px;
+  border-radius: 0 0 3px 3px; background: var(--pos-color, var(--line-strong));
+}
+.card[data-pos="GK"] { --pos-color: #d8a13a; }
+.card[data-pos="DEF"] { --pos-color: #3a86c8; }
+.card[data-pos="MID"] { --pos-color: #35a37a; }
+.card[data-pos="FWD"] { --pos-color: #c0553f; }
+
+.slot {
+  width: 88px; min-height: 74px;
+  border: 2px dashed var(--pitch-line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.05);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center;
+}
+.bench .slot { border-color: var(--line-strong); background: transparent; color: var(--ink-faint); }
+.slot:hover { background: rgba(255,255,255,.14); }
+.bench .slot:hover { background: var(--surface); }
+
+/* Captain / vice armbands and the remove control. */
+.badge {
+  position: absolute; top: -7px;
+  width: 19px; height: 19px; border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-family: var(--font-display); font-size: 12px; font-weight: 700; line-height: 17px;
+  padding: 0; color: var(--ink-faint);
+  /* Three controls on every card is noise. Keep them faint until wanted —
+     still visible enough to find on a touch screen, where hover never fires. */
+  opacity: .3;
+  transition: opacity .12s;
+}
+.card:hover .badge, .card:focus-within .badge { opacity: 1; }
+.badge.is-on { opacity: 1; }
+.badge.c { left: -6px; }
+.badge.v { left: 15px; }
+.badge.is-on { background: var(--brass-bg); border-color: var(--brass); color: var(--brass); }
+.badge.x { right: -6px; left: auto; color: var(--danger); }
+.badge.x:hover { background: var(--danger-bg); border-color: var(--danger); }
+
+/* -------------------------------------------------------- transfer advice */
+.verdict {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.verdict .head {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.verdict.go .head { color: var(--good); }
+.verdict.hold .head { color: var(--warn); }
+.verdict .why { font-size: 13px; color: var(--ink-muted); flex: 1 1 240px; }
+
+.moves { display: flex; flex-direction: column; }
+
+.move {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 10px; align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.move:last-child { border-bottom: none; }
+.move.is-top { background: var(--good-bg); }
+
+.move .side { min-width: 0; }
+.move .side .who {
+  font-family: var(--font-display); font-size: 17px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.move .side .who .tag {
+  font-family: var(--font-body); font-size: 9px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle;
+}
+.move .out .tag { background: var(--danger-bg); color: var(--danger); }
+.move .in .tag { background: var(--good-bg); color: var(--good); }
+.move .side .why { font-size: 11px; color: var(--ink-muted); }
+.move .side .runs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px; }
+
+.move .arrow { font-size: 17px; color: var(--ink-faint); }
+
+.move .alts { margin-top: 4px; font-size: 11px; color: var(--ink-faint); }
+.linkish {
+  border: none; background: none; padding: 0; font: inherit;
+  color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+}
+.linkish:hover { filter: brightness(1.15); }
+
+.move .delta { text-align: right; white-space: nowrap; }
+.move .delta .g {
+  font-family: var(--font-mono); font-size: 16px; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--good);
+}
+.move .delta .cost { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+.move .delta .apply { margin-top: 4px; }
+
+.pairs { border-top: 1px solid var(--line); }
+.pairs .lbl {
+  padding: 9px 14px 3px;
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.pair { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.pair:last-child { border-bottom: none; }
+.pair .net { font-family: var(--font-mono); font-weight: 600; }
+.pair .net.good { color: var(--good); }
+.pair .net.bad { color: var(--danger); }
+.pair .legs { color: var(--ink-muted); font-size: 12px; margin-top: 2px; }
+
+/* --------------------------------------------------------------- armbands */
+/* The captain doubles and the vice only matters if the captain blanks, so both
+   belong somewhere always readable — not only as a badge on a pitch card. */
+.armbands { display: flex; gap: 6px; margin-right: 4px; }
+
+.armband {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.armband .mark {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--brass-bg); color: var(--brass);
+  border: 1px solid var(--brass);
+  font-family: var(--font-display); font-size: 12px; font-weight: 700;
+  line-height: 16px; text-align: center;
+}
+.armband.vice .mark { background: var(--surface); color: var(--ink-faint); border-color: var(--line-strong); }
+.armband .who { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.armband .none { color: var(--danger); font-style: italic; }
+
+/* ------------------------------------------------------------- validation */
+.notices { display: flex; flex-direction: column; gap: 6px; padding: 11px 14px; }
+.notices:empty { display: none; }
+
+.notice {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 7px 11px; border-radius: 7px;
+  font-size: 13px;
+  border: 1px solid;
+}
+.notice.err { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
+.notice.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+.notice.ok { color: var(--good); background: var(--good-bg); border-color: var(--good); }
+.notice b { font-weight: 600; }
+
+/* ------------------------------------------------------------------ chips */
+.chipbar { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 14px; border-top: 1px solid var(--line); }
+
+.chip {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px; font-weight: 500;
+  display: flex; align-items: center; gap: 6px;
+}
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+.chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.chip.is-active .dot { background: var(--accent); }
+.chip.is-spent { opacity: .45; text-decoration: line-through; cursor: not-allowed; }
+.chip[disabled] { opacity: .4; cursor: not-allowed; }
+
+.chipbar .lbl {
+  width: 100%;
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------- pool */
+.filters { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+
+.panel-head select, .filters input[type="search"], .filters select {
+  font: inherit; font-size: 13px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.filters input[type="search"] { flex: 1 1 130px; min-width: 0; }
+
+.tabs { display: flex; gap: 3px; background: var(--surface-2); padding: 3px; border-radius: 8px; }
+.tab {
+  border: none; background: none; border-radius: 6px;
+  padding: 4px 11px;
+  font-family: var(--font-display); font-size: 14px; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.tab.is-on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+
+.pool-scroll { max-height: 620px; overflow-y: auto; overflow-x: auto; }
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  padding: 7px 5px;
+  text-align: right;
+  font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap; cursor: pointer;
+}
+thead th:first-child, tbody td:first-child { text-align: left; }
+thead th.is-sorted { color: var(--accent); }
+
+tbody td { padding: 5px 5px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tbody td.num { font-size: 12px; }
+tbody td:first-child { max-width: 108px; overflow: hidden; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr.is-owned { background: var(--accent-soft); }
+tbody tr.is-owned:hover { background: var(--accent-soft); filter: brightness(.97); }
+
+.p-name { font-family: var(--font-display); font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.p-sub { font-size: 10px; color: var(--ink-faint); letter-spacing: .05em; text-transform: uppercase; }
+
+.flag { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 5px; vertical-align: middle; }
+.flag.doubtful { background: var(--warn); }
+.flag.out { background: var(--danger); }
+
+.fdr { display: inline-block; min-width: 44px; padding: 1px 4px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; }
+.fdr-1, .fdr-2 { background: var(--good-bg); color: var(--good); }
+.fdr-3 { background: var(--surface-2); color: var(--ink-muted); }
+.fdr-4 { background: var(--warn-bg); color: var(--warn); }
+.fdr-5 { background: var(--danger-bg); color: var(--danger); }
+
+.add {
+  border: 1px solid var(--line-strong); background: var(--surface);
+  border-radius: 6px; width: 22px; height: 22px; padding: 0;
+  font-size: 15px; line-height: 1; color: var(--accent); font-weight: 600;
+}
+.add:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.add[disabled] { opacity: .3; cursor: not-allowed; }
+
+.empty { padding: 26px 14px; text-align: center; color: var(--ink-faint); font-size: 13px; }
+
+/* ----------------------------------------------------------------- footer */
+.foot {
+  max-width: 1500px; margin: 0 auto; padding: 4px 20px 26px;
+  font-size: 12px; color: var(--ink-faint);
+}
+.foot code { font-family: var(--font-mono); font-size: 11px; }
+
+.log { padding: 0 14px 12px; font-size: 12px; color: var(--ink-muted); }
+.log ol { margin: 0; padding-left: 18px; }
+.log li { margin-bottom: 2px; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>Squad Deadline</h1>
+    <span class="gw" id="gwLabel">GW—</span>
+    <span class="deadline" id="deadline"></span>
+  </div>
+  <div class="ledger" id="ledger"></div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Transfer advice</h2>
+      <label class="p-sub" for="metric">Rate players on</label>
+      <select id="metric" aria-label="Ranking metric"></select>
+      <label class="p-sub" for="horizon">over</label>
+      <select id="horizon" aria-label="Planning horizon"></select>
+    </div>
+    <div id="advice"></div>
+
+    <div class="panel-head" style="border-top:1px solid var(--line)">
+      <h2 id="formationLabel">Your XV</h2>
+      <div class="armbands" id="armbands"></div>
+      <button class="btn" id="copySquad" title="Copy your 15 for config.yaml">Copy squad</button>
+      <button class="btn" id="autoSquad" title="Only sensible on a Wildcard or Free Hit">Wildcard draft</button>
+      <button class="btn btn-danger" id="reset">Reset</button>
+    </div>
+
+    <div class="notices" id="notices"></div>
+
+    <div class="pitch" id="pitch"></div>
+
+    <div class="bench" id="bench">
+      <div class="bench-label">Bench — autosub order</div>
+    </div>
+
+    <div class="chipbar" id="chipbar"></div>
+
+    <div class="panel-head" style="border-top:1px solid var(--line); border-bottom:none;">
+      <h2 style="font-size:15px;">Lock in your team</h2>
+      <button class="btn btn-primary" id="confirm">Confirm GW</button>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <aside class="panel">
+    <div class="panel-head"><h2>Player pool</h2><span class="p-sub" id="poolCount"></span></div>
+    <div class="filters">
+      <div class="tabs" id="posTabs"></div>
+      <input type="search" id="search" placeholder="Search player" aria-label="Search player">
+      <select id="teamFilter" aria-label="Filter by club"></select>
+      <select id="availFilter" aria-label="Filter by availability">
+        <option value="all">All players</option>
+        <option value="fit" selected>Available only</option>
+      </select>
+    </div>
+    <div class="pool-scroll"><table id="poolTable">
+      <thead><tr id="poolHead"></tr></thead>
+      <tbody id="poolBody"></tbody>
+    </table></div>
+  </aside>
+</main>
+
+<footer class="foot" id="foot"></footer>
+
+<script>
+const DATA = /*__FPL_DATA__*/null;
+
+/* =====================================================================
+   Rules — 2026/27. Every constant the squad and transfer logic depends on
+   lives here so a rule change is a one-line edit.
+   ===================================================================== */
+const RULES = {
+  budget: 1000,                                   // tenths of a million
+  quota: { GK: 2, DEF: 5, MID: 5, FWD: 3 },       // the 15
+  minStart: { GK: 1, DEF: 3, MID: 2, FWD: 1 },
+  maxStart: { GK: 1, DEF: 5, MID: 5, FWD: 3 },
+  maxPerClub: 3,
+  squadSize: 15,
+  xiSize: 11,
+  freeTransfersPerGw: 1,
+  maxRolledTransfers: 5,
+  hitCost: 4,
+  lastGw: 38,
+  firstHalfLastGw: 19,                            // chip set 1 expires at this deadline
+};
+
+const POSITIONS = ["GK", "DEF", "MID", "FWD"];
+
+const CHIPS = [
+  { id: "wildcard", name: "Wildcard", note: "Unlimited transfers, kept permanently." },
+  { id: "freehit",  name: "Free Hit", note: "Unlimited transfers for one week, then reverts." },
+  { id: "3xc",      name: "Triple Captain", note: "Captain scores x3." },
+  { id: "bboost",   name: "Bench Boost", note: "All 15 score." },
+];
+
+/** Transfers are free under these chips — and don't consume the weekly allowance. */
+const UNLIMITED_CHIPS = new Set(["wildcard", "freehit"]);
+
+const byId = new Map(DATA.players.map(p => [p.id, p]));
+const money = t => (t / 10).toFixed(1);
+
+/* ---------------------------------------------------------------------
+   What to rank and optimise by.
+
+   The project's own walk-forward backtest is the reason this is a choice
+   rather than a constant: FPL's published expected points ranks players far
+   better within position (Spearman 0.69) than the current baseline model does
+   (0.40), and ranking is what squad selection actually needs. Early in a
+   season the model is weakest of all — it has a handful of matches to go on,
+   so it reads cheap over-performers as elite and quiet premiums as worthless.
+   --------------------------------------------------------------------- */
+const METRICS = [
+  { key: "epFpl", label: "FPL xPts" },
+  { key: "ep", label: "Model xPts" },
+  { key: "ppgw", label: "Season so far" },
+  { key: "form", label: "Recent form" },
+];
+
+let metric = "epFpl";
+
+/** The ranking value for a player, under whichever metric is selected. */
+const epOf = p => (typeof p === "object" ? p : byId.get(p))[metric] || 0;
+const priceOf = p => (typeof p === "object" ? p : byId.get(p)).price;
+
+/**
+ * Rank by the chosen metric, breaking exact ties on price.
+ *
+ * Ties are the normal case in the opening weeks — most of the pool sits on
+ * the same one or two values — and at equal expected points the dearer
+ * player is the one the market rates more highly.
+ */
+const byRank = (a, b) => (epOf(b) - epOf(a)) || (priceOf(b) - priceOf(a));
+const metricLabel = () => METRICS.find(m => m.key === metric).label;
+
+/* ---------------------------------------------------------------------
+   Selling price (brief §4): you get what you paid plus half of any rise,
+   rounded down to 0.1m. A price fall is taken in full. Working in tenths
+   keeps that rounding exact.
+   --------------------------------------------------------------------- */
+function sellPrice(buyPrice, nowPrice) {
+  if (nowPrice <= buyPrice) return nowPrice;
+  return buyPrice + Math.floor((nowPrice - buyPrice) / 2);
+}
+
+/* Which half of the season a gameweek sits in — chips come in two sets. */
+const chipSet = gw => (gw <= RULES.firstHalfLastGw ? 1 : 2);
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const STORAGE_KEY = "fpl-squad-deadline-v1";
+
+/**
+ * The gameweek comes from the calendar, never from a button.
+ *
+ * Every remaining deadline is baked in at build time, and the whole fixture
+ * calendar is published in advance — so the page works out which gameweek it is
+ * from its own clock rather than from when it was last generated. Cross Friday's
+ * deadline and it rolls to the next gameweek by itself, granting the free
+ * transfer and settling any Free Hit, with no rebuild needed.
+ *
+ * The gameweek you plan for is the first whose deadline has not passed. That is
+ * deliberately the deadline and not the final whistle: once the deadline goes
+ * your team is locked and the next one is the only thing you can still change.
+ */
+function currentGw() {
+  const events = DATA.events || [];
+  if (!events.length) return DATA.gameweek;
+
+  const now = Date.now();
+  const next = events.find(e => Date.parse(e.deadline) > now);
+  return next ? next.gw : events[events.length - 1].gw;
+}
+
+/** True when the baked-in prices and projections predate the live gameweek. */
+const dataIsStale = () => currentGw() > DATA.gameweek;
+
+/** The deadline for the gameweek being planned, as a Date, or null. */
+function currentDeadline() {
+  const entry = (DATA.events || []).find(e => e.gw === currentGw());
+  return entry ? new Date(entry.deadline) : null;
+}
+
+function freshState() {
+  return {
+    lastSeenGw: DATA.gameweek,   // calendar position at the last interaction
+    confirmedForGw: null,        // gameweek the saved squad is locked for
+    pendingFreeHitRevert: false,
+    picks: [],            // { id, buyPrice, starting, benchRank }
+    confirmed: null,      // picks as they stood at the last deadline
+    preFreeHit: null,     // squad to restore after a Free Hit week
+    captain: null,
+    vice: null,
+    freeTransfers: 1,
+    activeChip: null,
+    chipsUsed: {},        // "1:wildcard" -> gameweek it was played
+    realised: 0,          // profit banked on players already sold
+    totalHits: 0,
+    history: [],
+  };
+}
+
+/**
+ * Start from a squad baked in at build time (`--squad` on the exporter).
+ *
+ * It loads as an *already confirmed* squad, not a draft: you are mid-season
+ * with a real team, so the very next change has to count as a transfer against
+ * this week's allowance. Starting it as a draft would quietly hand you a free
+ * rebuild.
+ */
+function presetState() {
+  if (!Array.isArray(DATA.presetSquad) || !DATA.presetSquad.length) return null;
+  if (DATA.presetSquad.some(id => !byId.has(id))) return null;
+
+  const s = freshState();
+  s.picks = DATA.presetSquad.map(id => ({
+    id,
+    buyPrice: byId.get(id).price,
+    starting: false,
+    benchRank: null,
+  }));
+  s.confirmed = s.picks.map(p => ({ ...p }));
+
+  // Transfers already spent this gameweek, so a fresh browser does not hand
+  // back an allowance that has been used.
+  if (typeof DATA.freeTransfers === "number") s.freeTransfers = DATA.freeTransfers;
+
+  // Armbands are yours to choose, so carry them across rebuilds rather than
+  // letting the auto-XI reassign them every time the page is regenerated.
+  if (DATA.captain && byId.has(DATA.captain)) s.captain = DATA.captain;
+  if (DATA.vice && byId.has(DATA.vice)) s.vice = DATA.vice;
+
+  // Your real bank cannot be derived from today's prices — it depends on what
+  // you paid, which this page never sees. When the build supplies it, the
+  // difference is carried as a realised-profit term so `bank()` matches your
+  // actual FPL balance and affordability checks come out right.
+  if (typeof DATA.bank === "number") {
+    const impliedFromPrices = RULES.budget - s.picks.reduce((t, p) => t + p.buyPrice, 0);
+    s.realised = DATA.bank - impliedFromPrices;
+  }
+  return s;
+}
+
+let state = load() || presetState() || freshState();
+const startedFromPreset = !load() && !!presetState();
+
+/**
+ * Bring stored state into line with the real calendar, and repair anything an
+ * older build left behind.
+ *
+ * Two jobs. Gameweeks that have genuinely elapsed since you last opened the
+ * page grant their free transfers and settle any Free Hit. And history entries
+ * for gameweeks that have not happened are deleted: they are the fingerprint of
+ * the old hand-cranked counter, and leaving them would keep reporting hits you
+ * never took.
+ */
+function syncToCalendar() {
+  const gw = currentGw();
+  delete state.gw;   // the old hand-advanced counter, if this state predates the fix
+
+  const phantom = (state.history || []).filter(h => h.gw > gw);
+  if (phantom.length) {
+    state.history = state.history.filter(h => h.gw <= gw);
+    state.totalHits = state.history.reduce((t, h) => t + (h.hit || 0), 0);
+    // The old counter also left the transfer allowance wherever it happened to
+    // stop. Rebuild it from what was actually done in the live gameweek.
+    const thisGw = state.history.find(h => h.gw === gw);
+    state.freeTransfers = Math.max(0, RULES.freeTransfersPerGw - (thisGw ? thisGw.transfers : 0));
+    state.activeChip = null;
+  }
+  if (state.confirmedForGw != null && state.confirmedForGw > gw) state.confirmedForGw = null;
+
+  const seen = typeof state.lastSeenGw === "number" ? state.lastSeenGw : gw;
+  const elapsed = gw - seen;
+  if (elapsed > 0) {
+    // A Free Hit squad lasts one gameweek and then reverts.
+    if (state.pendingFreeHitRevert && state.preFreeHit) {
+      state.picks = state.preFreeHit.map(p => ({ ...p }));
+      state.confirmed = state.picks.map(p => ({ ...p }));
+      state.preFreeHit = null;
+    }
+    state.pendingFreeHitRevert = false;
+    state.activeChip = null;
+    state.freeTransfers = Math.min(
+      RULES.maxRolledTransfers, state.freeTransfers + elapsed * RULES.freeTransfersPerGw
+    );
+  }
+  state.lastSeenGw = gw;
+  return { phantom: phantom.length, elapsed: Math.max(0, elapsed) };
+}
+
+const calendarSync = syncToCalendar();
+let selectedPick = null;   // squad card awaiting a swap partner
+let filters = { pos: "ALL", search: "", team: "ALL", avail: "fit" };
+let sort = { key: "ep", dir: -1 };
+
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Drop stored squads that predate the current player data.
+    if (!Array.isArray(s.picks) || s.picks.some(p => !byId.has(p.id))) return null;
+    return s;
+  } catch (e) { return null; }
+}
+
+/* =====================================================================
+   Derived squad facts
+   ===================================================================== */
+const pickOf = id => state.picks.find(p => p.id === id);
+const posOf = id => byId.get(id).pos;
+const countPos = pos => state.picks.filter(p => posOf(p.id) === pos).length;
+const starters = () => state.picks.filter(p => p.starting);
+const benched = () => state.picks.filter(p => !p.starting).sort((a, b) => a.benchRank - b.benchRank);
+
+/** What the squad is worth now — not what is spendable. */
+function squadValue() {
+  return state.picks.reduce((t, p) => t + byId.get(p.id).price, 0);
+}
+
+/**
+ * Spendable money: the budget, less what you actually paid for the players you
+ * still hold, plus profit banked on players you have sold.
+ *
+ * A price rise on a player you own does *not* add to the bank — it only shows up
+ * as squad value until you sell, and even then you keep just half the rise.
+ */
+function bank() {
+  const paid = state.picks.reduce((t, p) => t + p.buyPrice, 0);
+  return RULES.budget - paid + (state.realised || 0);
+}
+
+function clubCounts() {
+  const m = new Map();
+  for (const p of state.picks) {
+    const t = byId.get(p.id).teamId;
+    m.set(t, (m.get(t) || 0) + 1);
+  }
+  return m;
+}
+
+/** Players swapped in since the last confirmed deadline. */
+function transfersMade() {
+  if (!state.confirmed) return 0;                        // the initial squad is free
+  const before = new Set(state.confirmed.map(p => p.id));
+  return state.picks.filter(p => !before.has(p.id)).length;
+}
+
+function hitsTaken() {
+  if (UNLIMITED_CHIPS.has(state.activeChip)) return 0;
+  return Math.max(0, transfersMade() - state.freeTransfers) * RULES.hitCost;
+}
+
+function formation() {
+  const s = starters();
+  return POSITIONS.slice(1).map(pos => s.filter(p => posOf(p.id) === pos).length).join("-");
+}
+
+/* =====================================================================
+   Validation — every rule from brief §4, each with a message that says
+   what to do about it rather than just what is wrong.
+   ===================================================================== */
+function validate() {
+  const out = [];
+  const n = state.picks.length;
+
+  for (const pos of POSITIONS) {
+    const have = countPos(pos), want = RULES.quota[pos];
+    if (have > want) out.push({ level: "err", msg: `Too many ${pos}: ${have} of ${want}.` });
+  }
+
+  if (n < RULES.squadSize) {
+    const missing = POSITIONS
+      .map(pos => ({ pos, n: RULES.quota[pos] - countPos(pos) }))
+      .filter(x => x.n > 0)
+      .map(x => `${x.n} ${x.pos}`)
+      .join(", ");
+    out.push({ level: "warn", msg: `Squad incomplete — still need ${missing}.` });
+  }
+
+  if (bank() < 0) {
+    out.push({ level: "err", msg: `Over budget by £${money(-bank())}m. Sell someone or downgrade.` });
+  }
+
+  for (const [teamId, count] of clubCounts()) {
+    if (count > RULES.maxPerClub) {
+      const short = DATA.teams.find(t => t.id === teamId)?.short || teamId;
+      out.push({ level: "err", msg: `${count} players from ${short} — the limit is ${RULES.maxPerClub}.` });
+    }
+  }
+
+  if (n === RULES.squadSize) {
+    const s = starters();
+    if (s.length !== RULES.xiSize) {
+      out.push({ level: "err", msg: `Starting XI has ${s.length} players, not ${RULES.xiSize}.` });
+    } else {
+      for (const pos of POSITIONS) {
+        const c = s.filter(p => posOf(p.id) === pos).length;
+        if (c < RULES.minStart[pos]) out.push({ level: "err", msg: `Only ${c} ${pos} starting — ${RULES.minStart[pos]} is the minimum.` });
+        if (c > RULES.maxStart[pos]) out.push({ level: "err", msg: `${c} ${pos} starting — ${RULES.maxStart[pos]} is the maximum.` });
+      }
+    }
+    if (!state.captain) out.push({ level: "warn", msg: "No captain picked — they score double." });
+    if (!state.vice) out.push({ level: "warn", msg: "No vice-captain — they take over if the captain plays no minutes." });
+  }
+
+  const t = transfersMade();
+  if (t > 0 && !UNLIMITED_CHIPS.has(state.activeChip)) {
+    const free = Math.min(t, state.freeTransfers);
+    const paid = t - free;
+    if (paid > 0) {
+      out.push({
+        level: "warn",
+        msg: `${t} transfers, ${state.freeTransfers} free — ${paid} extra ${paid === 1 ? "costs" : "cost"} ${paid * RULES.hitCost} points. Play a Wildcard to avoid it.`,
+      });
+    } else {
+      out.push({ level: "ok", msg: `${t} of ${state.freeTransfers} free ${state.freeTransfers === 1 ? "transfer" : "transfers"} used — no points hit.` });
+    }
+  } else if (t > 0) {
+    const chip = CHIPS.find(c => c.id === state.activeChip);
+    out.push({ level: "ok", msg: `${chip.name} active — ${t} transfers, no points hit.` });
+  }
+
+  // Early in a season every ranking metric is close to noise. Say so, rather
+  // than let a 0.5-against-1.0 gap look like a real distinction.
+  if (state.picks.length === RULES.squadSize) {
+    const spread = state.picks.map(p => epOf(p.id));
+    const range = Math.max(...spread) - Math.min(...spread);
+    if (DATA.gameweek <= 5 || range < 4) {
+      out.push({
+        level: "warn",
+        msg: `Only ${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} played, so ${metricLabel()} barely separates these players — auto-pick is close to a coin flip here. Click any two cards to swap them yourself.`,
+      });
+    }
+  }
+
+  const flagged = state.picks.filter(p => p.starting && byId.get(p.id).status !== "available");
+  if (flagged.length) {
+    out.push({
+      level: "warn",
+      msg: `Starting ${flagged.length} flagged ${flagged.length === 1 ? "player" : "players"}: ` +
+           flagged.map(p => `${byId.get(p.id).name} (${byId.get(p.id).status})`).join(", ") + ".",
+    });
+  }
+
+  return out;
+}
+
+const isLegal = () => state.picks.length === RULES.squadSize && !validate().some(v => v.level === "err");
+
+/* =====================================================================
+   Squad edits
+   ===================================================================== */
+function canAdd(player) {
+  if (state.picks.length >= RULES.squadSize) return "Squad already has 15 players.";
+  if (pickOf(player.id)) return "Already in your squad.";
+  if (countPos(player.pos) >= RULES.quota[player.pos]) return `Already have ${RULES.quota[player.pos]} ${player.pos}.`;
+  const clubs = clubCounts();
+  if ((clubs.get(player.teamId) || 0) >= RULES.maxPerClub) return `Already have ${RULES.maxPerClub} from that club.`;
+  if (player.price > bank()) return `Not enough in the bank (£${money(bank())}m).`;
+  return null;
+}
+
+function addPlayer(id) {
+  const player = byId.get(id);
+  const why = canAdd(player);
+  if (why) return flash(why);
+
+  // New signings start on the bench unless the XI still has room for them.
+  const s = starters();
+  const posStarting = s.filter(p => posOf(p.id) === player.pos).length;
+  const canStart = s.length < RULES.xiSize && posStarting < RULES.maxStart[player.pos];
+
+  state.picks.push({ id, buyPrice: player.price, starting: canStart, benchRank: canStart ? null : nextBenchRank(player.pos) });
+  normaliseBench();
+  render();
+}
+
+function removePlayer(id) {
+  const idx = state.picks.findIndex(p => p.id === id);
+  if (idx < 0) return;
+
+  // Bank the profit rule on the way out. For a player bought at the current
+  // price this is zero, so drafting is unaffected.
+  const pick = state.picks[idx];
+  state.realised = (state.realised || 0) + (sellPrice(pick.buyPrice, byId.get(id).price) - pick.buyPrice);
+
+  state.picks.splice(idx, 1);
+  if (state.captain === id) state.captain = null;
+  if (state.vice === id) state.vice = null;
+  if (selectedPick === id) selectedPick = null;
+  normaliseBench();
+  render();
+}
+
+function nextBenchRank(pos) {
+  // The bench keeper sits apart: they can only ever replace the other keeper.
+  if (pos === "GK") return 0;
+  const used = benched().filter(p => posOf(p.id) !== "GK").map(p => p.benchRank);
+  for (let r = 1; r <= 3; r++) if (!used.includes(r)) return r;
+  return 3;
+}
+
+function normaliseBench() {
+  const out = benched().filter(p => posOf(p.id) !== "GK");
+  out.sort((a, b) => (a.benchRank ?? 9) - (b.benchRank ?? 9));
+  out.forEach((p, i) => { p.benchRank = i + 1; });
+  benched().filter(p => posOf(p.id) === "GK").forEach(p => { p.benchRank = 0; });
+  if (state.captain && !pickOf(state.captain)?.starting) state.captain = null;
+  if (state.vice && !pickOf(state.vice)?.starting) state.vice = null;
+  save();
+}
+
+/** Would starting `inId` in place of `outId` still leave a legal formation? */
+function swapKeepsFormationLegal(inPick, outPick) {
+  const a = posOf(inPick.id), b = posOf(outPick.id);
+  if (a === b) return true;
+  if (a === "GK" || b === "GK") return false;   // a keeper only swaps with a keeper
+  const counts = {};
+  for (const pos of POSITIONS) counts[pos] = starters().filter(p => posOf(p.id) === pos).length;
+  counts[b] -= 1; counts[a] += 1;
+  return POSITIONS.every(pos => counts[pos] >= RULES.minStart[pos] && counts[pos] <= RULES.maxStart[pos]);
+}
+
+function attemptSwap(aId, bId) {
+  const a = pickOf(aId), b = pickOf(bId);
+  if (!a || !b) return;
+
+  if (a.starting === b.starting) {
+    // Both benched: reorder the autosub priority.
+    if (!a.starting && posOf(aId) !== "GK" && posOf(bId) !== "GK") {
+      const t = a.benchRank; a.benchRank = b.benchRank; b.benchRank = t;
+      selectedPick = null; render(); return;
+    }
+    selectedPick = null;
+    return flash("Pick one starter and one substitute to swap them.");
+  }
+
+  const [inPick, outPick] = a.starting ? [b, a] : [a, b];
+  if (!swapKeepsFormationLegal(inPick, outPick)) {
+    selectedPick = null;
+    return flash(posOf(inPick.id) === "GK" || posOf(outPick.id) === "GK"
+      ? "A goalkeeper can only swap with the other goalkeeper."
+      : "That swap would leave an illegal formation.");
+  }
+
+  inPick.starting = true;  inPick.benchRank = null;
+  outPick.starting = false; outPick.benchRank = nextBenchRank(posOf(outPick.id));
+  selectedPick = null;
+  normaliseBench();
+  render();
+}
+
+/* =====================================================================
+   Transfer advice — what this page is for.
+
+   The question is never "who is the best player" but "which single swap gains
+   me the most points between now and the deadline after next". Three things
+   decide that, and all three are folded into one score per player:
+
+     rate      points per appearance, under the selected metric
+     fixtures  who they play over the horizon, weighted by FPL difficulty —
+               this is where a blank scores nothing and a double scores twice
+     minutes   an injured or suspended player scores nothing at all
+
+   The weights are a transparent heuristic, not a fitted model. They are here to
+   be argued with, which is why every suggestion shows its reasoning.
+   ===================================================================== */
+
+/** Fixture difficulty -> how much of a player's usual rate to expect. */
+const FDR_MULTIPLIER = { 1: 1.25, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
+
+/** A transfer has to clear this over the horizon before it is worth using the free one. */
+const WORTH_A_TRANSFER = 1.5;
+
+/**
+ * Default to the single upcoming gameweek.
+ *
+ * The longer horizons are still in the dropdown, but this early in a season a
+ * five-week projection multiplies two gameweeks of evidence by five, and the
+ * confidence in the resulting number is not five times higher. One gameweek is
+ * the honest default; widen it once there is a season to extrapolate from.
+ */
+let horizon = Math.min(1, (DATA.horizonGws || []).length || 1);
+
+/** Gameweeks in the planning window, counted from the live gameweek. */
+const horizonGws = () => {
+  const first = currentGw();
+  return Array.from({ length: horizon }, (_, i) => first + i)
+    .filter(gw => gw <= RULES.lastGw);
+};
+const fixturesInHorizon = p => p.fixtures.filter(f => horizonGws().includes(f.gw));
+
+/** Probability the player is actually available, from FPL's own flags. */
+function availability(p) {
+  if (p.chance !== null && p.chance !== undefined) return p.chance / 100;
+  if (p.status === "available") return 1;
+  if (p.status === "doubtful") return 0.5;
+  return 0;   // injured, suspended, unavailable
+}
+
+/**
+ * How many gameweeks of evidence the prior is worth.
+ *
+ * With `DATA.gwsPlayed` gameweeks actually played, a player's own record gets
+ * weight `gwsPlayed / (gwsPlayed + PRIOR_WEIGHT)`. Two games in, that is a third
+ * — which is about right, and the balance shifts to the real record on its own
+ * as the season goes on.
+ */
+const PRIOR_WEIGHT = 4;
+
+/**
+ * What a player at this price normally scores per gameweek. Interpolated
+ * between the knots the exporter fitted, and flat outside them rather than
+ * extrapolated. Used on its own only for players with no Premier League past.
+ */
+function priceRate(p) {
+  const knots = (DATA.pricePrior || {})[p.pos];
+  if (!knots || !knots.length) return 0;
+  if (p.price <= knots[0][0]) return knots[0][1];
+  for (let i = 1; i < knots.length; i++) {
+    if (p.price <= knots[i][0]) {
+      const [x0, y0] = knots[i - 1];
+      const [x1, y1] = knots[i];
+      const t = (p.price - x0) / Math.max(1, x1 - x0);
+      return y0 + t * (y1 - y0);
+    }
+  }
+  return knots[knots.length - 1][1];
+}
+
+/** How much of the prior comes from last season rather than from price. */
+const LAST_SEASON_WEIGHT = 0.65;
+
+/** Below this many appearances, last season's per-game rate is too noisy to use. */
+const MIN_APPS_FOR_RATE = 5;
+
+/**
+ * Expected share of gameweeks the player actually appears in.
+ *
+ * Availability moves between seasons far more than scoring rate does — a new
+ * manager, a recovered injury, a won starting spot — so this leans on *this*
+ * season's minutes, shrunk toward last season's rate rather than replaced by it.
+ */
+function appearanceRate(p) {
+  const played = Math.max(0, DATA.gwsPlayed || 0);
+  const lastApps = p.last ? p.last.mins / 90 : null;
+  const lastRate = lastApps === null ? null : Math.min(1, lastApps / (DATA.seasonGws || 38));
+
+  if (!played) return lastRate ?? 0.5;
+  const thisRate = Math.min(1, p.minutes / (90 * played));
+  if (lastRate === null) return thisRate;
+  return (thisRate * played + lastRate * PRIOR_WEIGHT) / (played + PRIOR_WEIGHT);
+}
+
+/**
+ * What to expect from a player *before* looking at this season's scoring.
+ *
+ * Split deliberately into two things that behave differently:
+ *
+ *   quality       points per appearance — how good they are when they play
+ *   availability  how often they play
+ *
+ * A single per-gameweek number conflates them, and that conflation was a real
+ * error. De Cuyper scored 5.4 points per appearance last season — a higher rate
+ * than Guéhi or Tarkowski — but played only 16 of 38 games, so a per-gameweek
+ * prior read him as a 2.2 player rather than an excellent one who was rotated.
+ * He is starting now, and the prior should notice that.
+ *
+ * Price is still blended in at a lower weight, because it carries what last
+ * season cannot: a summer move, a new role, a changed pecking order.
+ */
+function priorRate(p) {
+  const byPrice = priceRate(p);
+  const last = p.last;
+  if (!last) return byPrice;   // new signing or promoted side: price is all we have
+
+  const apps = last.mins / 90;
+  if (apps < MIN_APPS_FOR_RATE) return byPrice;   // too few games to rate them on
+
+  const perApp = last.pts / apps;
+  const fromLastSeason = perApp * appearanceRate(p);
+  return LAST_SEASON_WEIGHT * fromLastSeason + (1 - LAST_SEASON_WEIGHT) * byPrice;
+}
+
+/** This season's evidence, as points per gameweek. */
+function observedRate(p) {
+  const played = Math.max(0, DATA.gwsPlayed || 0);
+  if (metric === "ppgw") return played ? p.pts / played : 0;
+  if (metric === "form") return p.form;
+  return metric === "ep" ? p.ep : p.epFpl;   // both are already per-gameweek
+}
+
+/**
+ * Points per gameweek, shrunk toward the price prior.
+ *
+ * Without this, two gameweeks of noise get projected across the whole horizon
+ * and a keeper who happened to keep a clean sheet looks worth fifty points.
+ */
+function rate(p) {
+  const played = Math.max(0, DATA.gwsPlayed || 0);
+  return (observedRate(p) * played + priorRate(p) * PRIOR_WEIGHT) / (played + PRIOR_WEIGHT);
+}
+
+/** Expected points over the horizon: rate x availability x fixture run. */
+function horizonScore(p) {
+  const fixtures = fixturesInHorizon(p);
+  const weight = fixtures.reduce((t, f) => t + (FDR_MULTIPLIER[f.difficulty] ?? 1), 0);
+  return rate(p) * availability(p) * weight;
+}
+
+const scoreById = id => horizonScore(byId.get(id));
+
+/**
+ * What a squad is worth: the horizon points of its best legal XI.
+ *
+ * Bench players score nothing, so this is the number a transfer has to move.
+ * Valuing transfers on squad totals instead would rate upgrading a backup
+ * goalkeeper as highly as upgrading a starter, which is exactly wrong.
+ */
+function squadValueOverHorizon(picks) {
+  const best = bestXI(picks, scoreById);
+  return best ? best.ep : 0;
+}
+
+const perGw = score => score / Math.max(1, horizon);
+
+/** Short, specific reasons — the bit that makes a suggestion arguable. */
+function reasonsOut(p) {
+  const out = [];
+  if (p.status !== "available") {
+    out.push(p.chance !== null ? `${p.status}, ${p.chance}% chance` : p.status);
+  }
+  if (p.starts === 0 && p.minutes < 60) out.push("barely playing");
+  else if (p.minutes < 90) out.push(`only ${p.minutes} mins`);
+  out.push(`${p.pts} pts in ${DATA.gameweek - 1} GW${DATA.gameweek === 2 ? "" : "s"}`);
+  if (p.last) out.push(`${p.last.pts} last season`);
+
+  const hard = fixturesInHorizon(p).filter(f => f.difficulty >= 4).length;
+  if (hard >= 2) out.push(`${hard} hard fixtures`);
+  const blanks = horizon - fixturesInHorizon(p).length;
+  if (blanks > 0) out.push(`${blanks} blank${blanks === 1 ? "" : "s"}`);
+  return out.join(" · ");
+}
+
+function reasonsIn(p) {
+  const out = [`${p.pts} pts`];
+  if (p.form > 0) out.push(`form ${p.form}`);
+  if (p.last && p.last.mins >= 450) {
+    const apps = p.last.mins / 90;
+    out.push(`${(p.last.pts / apps).toFixed(1)}/game last season over ${Math.round(apps)} apps`);
+  } else if (p.last) {
+    out.push(`${p.last.pts} last season`);
+  }
+  const easy = fixturesInHorizon(p).filter(f => f.difficulty <= 2).length;
+  if (easy >= 2) out.push(`${easy} easy fixtures`);
+  const extra = fixturesInHorizon(p).length - horizon;
+  if (extra > 0) out.push(`${extra} double${extra === 1 ? "" : "s"}`);
+  if (p.status !== "available") {
+    out.push(p.chance !== null ? `${p.status}, ${p.chance}%` : p.status);
+  }
+  return out.join(" · ");
+}
+
+/** Squad state a candidate has to fit into. */
+function transferContext(picks, bankNow) {
+  const clubs = new Map();
+  for (const p of picks) {
+    const t = byId.get(p.id).teamId;
+    clubs.set(t, (clubs.get(t) || 0) + 1);
+  }
+  return { clubs, bank: bankNow, held: new Set(picks.map(p => p.id)) };
+}
+
+/** How many candidates per position get the exact (more expensive) scoring. */
+const SHORTLIST = 24;
+
+/**
+ * Every legal, affordable, better replacement for one player, best first.
+ *
+ * Scored by how much each swap moves the best XI, so an upgrade that would only
+ * sit on the bench correctly scores near zero. That is the expensive part, so a
+ * cheap raw-score filter picks a shortlist first.
+ */
+function optionsFor(pick, ctx, picks, baseline, limit = 4) {
+  const out = byId.get(pick.id);
+  const sell = sellPrice(pick.buyPrice, out.price);
+  const budget = sell + ctx.bank;
+  const others = picks.filter(p => p.id !== pick.id);
+
+  const shortlist = DATA.players
+    .filter(c =>
+      c.pos === out.pos &&
+      !ctx.held.has(c.id) &&
+      c.price <= budget &&
+      availability(c) > 0 &&
+      (ctx.clubs.get(c.teamId) || 0) + 1 - (c.teamId === out.teamId ? 1 : 0) <= RULES.maxPerClub)
+    .sort((a, b) => horizonScore(b) - horizonScore(a))
+    .slice(0, SHORTLIST);
+
+  return shortlist
+    .map(c => {
+      const after = others.concat([{ id: c.id, buyPrice: c.price }]);
+      return {
+        outId: out.id,
+        inId: c.id,
+        gain: squadValueOverHorizon(after) - baseline,
+        spend: c.price - sell,
+        sell,
+      };
+    })
+    .filter(o => o.gain > 0.05)
+    .sort((a, b) => b.gain - a.gain)
+    .slice(0, limit);
+}
+
+/**
+ * Goalkeepers and defenders at the same club share a clean sheet, so they form
+ * one correlated unit. Midfielders and forwards score independently enough to
+ * be treated separately.
+ */
+function defensiveUnitKey(p) {
+  return (p.pos === "GK" || p.pos === "DEF") ? `${p.teamId}:D` : null;
+}
+
+const teamDefenceOf = teamId => (DATA.teamDefence?.teams || {})[String(teamId)] || null;
+const isEliteDefence = teamId => !!teamDefenceOf(teamId)?.elite;
+
+/**
+ * Two options are within noise of each other when their gains are this close,
+ * per gameweek. Below it, the model is not really expressing a preference and
+ * should not be read as though it were.
+ */
+const TOO_CLOSE_TO_CALL = 0.35;
+
+/**
+ * The other side of the question: who else could be sold to fund this signing.
+ *
+ * A suggestion names one player out, but the incoming player rarely cares which
+ * of your defenders funds him. Showing only one pairing makes an arbitrary
+ * choice look like a considered one, and hides the case that actually confuses
+ * people: a player who looks like the obvious sale but is a few hundred grand
+ * short of affording the target. That near-miss is reported rather than
+ * silently skipped.
+ */
+function sellAlternatives(move, ctx, picks, baseline) {
+  const inn = byId.get(move.inId);
+  const alternatives = [];
+  const blocked = [];
+
+  for (const pick of picks) {
+    if (pick.id === move.outId) continue;
+    const out = byId.get(pick.id);
+    if (out.pos !== inn.pos) continue;   // squad shape has to survive the swap
+
+    const sell = sellPrice(pick.buyPrice, out.price);
+    const shortfall = inn.price - (sell + ctx.bank);
+    if (shortfall > 0) {
+      blocked.push({ id: pick.id, shortfall });
+      continue;
+    }
+
+    const after = picks.filter(p => p.id !== pick.id).concat([{ id: inn.id, buyPrice: inn.price }]);
+    const clubs = new Map();
+    for (const p of after) {
+      const t = byId.get(p.id).teamId;
+      clubs.set(t, (clubs.get(t) || 0) + 1);
+    }
+    if ((clubs.get(inn.teamId) || 0) > RULES.maxPerClub) continue;
+
+    alternatives.push({ id: pick.id, gain: squadValueOverHorizon(after) - baseline });
+  }
+
+  alternatives.sort((a, b) => b.gain - a.gain);
+  // Only near-misses are worth reporting; being £3m short explains itself.
+  blocked.sort((a, b) => a.shortfall - b.shortfall);
+  return {
+    alternatives: alternatives.slice(0, 2),
+    blocked: blocked.filter(b => b.shortfall <= 10).slice(0, 2),
+  };
+}
+
+/**
+ * What the next transfer costs in points, right now.
+ *
+ * Zero while a free transfer is in hand, four once they are gone. Suggestions
+ * have to clear this to be worth making at all.
+ */
+function hitForNextTransfer() {
+  if (UNLIMITED_CHIPS.has(state.activeChip)) return 0;
+  return transfersMade() < state.freeTransfers ? 0 : RULES.hitCost;
+}
+
+/** Best single transfers across the whole squad, each with its near-equal alternatives. */
+function singleMoves(limit = 6) {
+  if (state.picks.length !== RULES.squadSize) return [];
+  const ctx = transferContext(state.picks, bank());
+  const baseline = squadValueOverHorizon(state.picks);
+
+  // Keep every player's shortlist, not just its winner: when the top two are a
+  // coin flip, hiding the runner-up turns an arbitrary pick into an apparent
+  // recommendation. That is how "why Guéhi and not Gvardiol?" happens.
+  const byOut = new Map();
+  for (const pick of state.picks) {
+    byOut.set(pick.id, optionsFor(pick, ctx, state.picks, baseline, 4));
+  }
+
+  const all = [...byOut.values()].flat().sort((a, b) => b.gain - a.gain);
+
+  // One row per player out, per player in, and per correlated defensive unit.
+  //
+  // A club's goalkeeper and defenders all score off the same clean sheet, so
+  // two of them are one idea, not two. Listing both as separate rows reads as
+  // independent advice when it is really a choice between substitutes — and
+  // with the three-per-club limit you often cannot take both anyway. The
+  // runner-up still appears on the winner's "too close to call" line.
+  //
+  // The exception is the point of the exception: behind an elite defence that
+  // correlation is what you *want*. Arsenal kept 19 clean sheets in 38 last
+  // season, so a keeper and a defender there pay out together often enough to
+  // be worth owning together. Those clubs are allowed a second row, labelled as
+  // a deliberate double-up rather than passed off as an unrelated idea.
+  const seenOut = new Set();
+  const seenIn = new Set();
+  const seenUnit = new Set();
+  const moves = [];
+  for (const m of all) {
+    const inn = byId.get(m.inId);
+    const unit = defensiveUnitKey(inn);
+    const doublingUp = unit !== null && seenUnit.has(unit);
+
+    if (seenOut.has(m.outId) || seenIn.has(m.inId)) continue;
+    if (doublingUp && !isEliteDefence(inn.teamId)) continue;
+
+    seenOut.add(m.outId);
+    seenIn.add(m.inId);
+    if (unit !== null) seenUnit.add(unit);
+
+    const threshold = TOO_CLOSE_TO_CALL * Math.max(1, horizon);
+    const sellSide = sellAlternatives(m, ctx, state.picks, baseline);
+    moves.push({
+      ...m,
+      doubleUp: doublingUp ? teamDefenceOf(inn.teamId) : null,
+      sellAlts: sellSide.alternatives.filter(a => m.gain - a.gain < threshold),
+      sellBlocked: sellSide.blocked,
+      alts: (byOut.get(m.outId) || [])
+        .filter(o => o.inId !== m.inId && m.gain - o.gain < threshold)
+        .slice(0, 2),
+    });
+    if (moves.length >= limit) break;
+  }
+  return moves;
+}
+
+/** Best pairs, priced with the -4 that a second transfer costs. */
+function pairMoves(limit = 3) {
+  if (state.picks.length !== RULES.squadSize) return [];
+  const firsts = singleMoves(4);
+  const pairs = [];
+
+  for (const first of firsts) {
+    // Apply the first move, then look again with the updated bank and clubs.
+    const after = state.picks
+      .filter(p => p.id !== first.outId)
+      .concat([{ id: first.inId, buyPrice: byId.get(first.inId).price }]);
+    const ctx = transferContext(after, bank() - first.spend);
+    const baseAfter = squadValueOverHorizon(after);
+
+    for (const pick of after) {
+      if (pick.id === first.inId) continue;
+      const [best] = optionsFor(pick, ctx, after, baseAfter, 1);
+      if (!best) continue;
+      const free = Math.min(2, state.freeTransfers);
+      const hit = Math.max(0, 2 - free) * RULES.hitCost;
+      pairs.push({ first, second: best, gain: first.gain + best.gain, hit });
+    }
+  }
+
+  pairs.sort((a, b) => (b.gain - b.hit) - (a.gain - a.hit));
+  const seen = new Set();
+  return pairs.filter(p => {
+    if (p.first.outId === p.second.outId) return false;
+    // A pair is the same pair whichever leg is named first, so sort the key.
+    const key = [p.first.outId, p.second.outId].sort((x, y) => x - y).join(":");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, limit);
+}
+
+function applyMove(move) {
+  removePlayer(move.outId);
+  addPlayer(move.inId);
+}
+
+/* =====================================================================
+   Auto-pick
+   ===================================================================== */
+
+/** Best legal XI from the 15, by expected points. Every legal shape is checked. */
+function bestXI(picks, valueFn) {
+  const value = valueFn || (id => epOf(id));
+  const pool = {};
+  for (const pos of POSITIONS) {
+    pool[pos] = picks.filter(p => posOf(p.id) === pos)
+      .sort((a, b) => valueFn ? value(b.id) - value(a.id) : byRank(a.id, b.id));
+  }
+  let best = null;
+  for (let d = RULES.minStart.DEF; d <= RULES.maxStart.DEF; d++) {
+    for (let m = RULES.minStart.MID; m <= RULES.maxStart.MID; m++) {
+      for (let f = RULES.minStart.FWD; f <= RULES.maxStart.FWD; f++) {
+        if (1 + d + m + f !== RULES.xiSize) continue;
+        const need = { GK: 1, DEF: d, MID: m, FWD: f };
+        if (POSITIONS.some(pos => pool[pos].length < need[pos])) continue;
+        const xi = POSITIONS.flatMap(pos => pool[pos].slice(0, need[pos]));
+        const ep = xi.reduce((t, p) => t + value(p.id), 0);
+        if (!best || ep > best.ep) best = { ep, ids: new Set(xi.map(p => p.id)) };
+      }
+    }
+  }
+  return best;
+}
+
+function applyBestXI() {
+  if (state.picks.length !== RULES.squadSize) return flash("Fill all 15 places first.");
+  const best = bestXI(state.picks);
+  if (!best) return flash("No legal XI available from this squad.");
+
+  for (const p of state.picks) { p.starting = best.ids.has(p.id); p.benchRank = p.starting ? null : nextBenchRank(posOf(p.id)); }
+
+  // Bench order by expected points, keepers excluded — they have their own slot.
+  benched().filter(p => posOf(p.id) !== "GK")
+    .sort((a, b) => byRank(a.id, b.id))
+    .forEach((p, i) => { p.benchRank = i + 1; });
+
+  // Only fill empty armbands. Reassigning a captain the manager picked would
+  // silently override a decision the page has no business making.
+  const rank = starters().sort((a, b) => byRank(a.id, b.id));
+  const stillStarting = id => id && pickOf(id)?.starting;
+  if (!stillStarting(state.captain)) state.captain = rank[0]?.id ?? null;
+  if (!stillStarting(state.vice) || state.vice === state.captain) {
+    state.vice = rank.find(p => p.id !== state.captain)?.id ?? null;
+  }
+  normaliseBench();
+  render();
+}
+
+/* ---------------------------------------------------------------------
+   Auto-pick 15. A helper, not the Phase 5 optimiser: that one is a proper
+   integer program over a multi-week horizon.
+
+   What a squad is worth is the expected points of its best XI, not of all 15 —
+   bench players score nothing — so that is the objective throughout.
+   --------------------------------------------------------------------- */
+
+const MIN_PRICE = 40;   // no player costs less than £4.0m
+
+function squadScore(list) {
+  const xi = bestXI(list.map(p => ({ id: p.id })));
+  return xi ? xi.ep : -1;
+}
+
+/** Fill 15 places greedily, scoring players on points minus a price penalty. */
+function greedyBuild(lambda) {
+  const ranked = DATA.players
+    .filter(p => p.status === "available" && epOf(p) > 0)
+    .map(p => ({ p, score: epOf(p) - lambda * p.price }))
+    .sort((a, b) => b.score - a.score);
+
+  const chosen = [];
+  const need = { ...RULES.quota };
+  const clubs = new Map();
+  let spend = 0;
+
+  for (const { p } of ranked) {
+    if (need[p.pos] <= 0) continue;
+    if ((clubs.get(p.teamId) || 0) >= RULES.maxPerClub) continue;
+    // Keep enough back that the remaining places can still be filled.
+    const remaining = RULES.squadSize - chosen.length - 1;
+    if (spend + p.price > RULES.budget - remaining * MIN_PRICE) continue;
+    chosen.push(p);
+    need[p.pos] -= 1;
+    clubs.set(p.teamId, (clubs.get(p.teamId) || 0) + 1);
+    spend += p.price;
+    if (chosen.length === RULES.squadSize) break;
+  }
+
+  return chosen.length === RULES.squadSize && spend <= RULES.budget ? chosen : null;
+}
+
+/**
+ * Spend what the greedy pass left in the bank.
+ *
+ * Repeatedly swap one player for the best same-position upgrade that still
+ * fits the budget and the three-per-club limit, keeping whichever swap raises
+ * the best XI most. Candidates are capped per position so this stays fast.
+ */
+function hillClimb(squad) {
+  const CANDIDATES = 40;
+  let current = squad.slice();
+  let currentScore = squadScore(current);
+
+  for (let pass = 0; pass < 40; pass++) {
+    const ids = new Set(current.map(p => p.id));
+    const clubs = new Map();
+    for (const p of current) clubs.set(p.teamId, (clubs.get(p.teamId) || 0) + 1);
+    const spare = RULES.budget - current.reduce((t, p) => t + p.price, 0);
+
+    let bestSwap = null;
+
+    for (let i = 0; i < current.length; i++) {
+      const out = current[i];
+      const affordable = out.price + spare;
+
+      const options = DATA.players
+        .filter(c =>
+          c.pos === out.pos &&
+          !ids.has(c.id) &&
+          c.status === "available" &&
+          c.price <= affordable &&
+          (clubs.get(c.teamId) || 0) + 1 - (c.teamId === out.teamId ? 1 : 0) <= RULES.maxPerClub)
+        .sort(byRank)
+        .slice(0, CANDIDATES);
+
+      for (const cand of options) {
+        const trial = current.slice();
+        trial[i] = cand;
+        const score = squadScore(trial);
+        if (score > currentScore + 1e-9 && (!bestSwap || score > bestSwap.score)) {
+          bestSwap = { score, trial };
+        }
+      }
+    }
+
+    if (!bestSwap) break;
+    current = bestSwap.trial;
+    currentScore = bestSwap.score;
+  }
+
+  return current;
+}
+
+function autoPickSquad() {
+  // Rebuilding from scratch mid-season re-prices the whole squad, so it only
+  // makes sense as a fresh draft or under a Wildcard.
+  if (state.confirmed && !UNLIMITED_CHIPS.has(state.activeChip)) {
+    if (!confirm("Auto-pick rebuilds all 15 from scratch, which counts as 15 transfers.\n\nPlay a Wildcard first to avoid the points hit. Continue anyway?")) return;
+  }
+
+  let best = null;
+  for (let lambda = 0; lambda <= 0.6; lambda += 0.02) {
+    const squad = greedyBuild(lambda);
+    if (!squad) continue;
+    const score = squadScore(squad);
+    if (!best || score > best.score) best = { score, squad };
+  }
+
+  if (!best) return flash("Could not build a legal squad from the current pool.");
+
+  const squad = hillClimb(best.squad);
+  const spend = squad.reduce((t, p) => t + p.price, 0);
+
+  state.realised = 0;
+  state.picks = squad.map(p => ({ id: p.id, buyPrice: p.price, starting: false, benchRank: null }));
+  applyBestXI();
+  flash(`Picked 15 for £${money(spend)}m — £${money(RULES.budget - spend)}m left in the bank.`);
+}
+
+/* =====================================================================
+   Gameweek progression — where the transfer rules actually bite
+   ===================================================================== */
+/**
+ * Save the current squad as your team for this gameweek.
+ *
+ * This settles the transfers — spending free ones, booking any hit — and makes
+ * the saved squad the baseline that the next change is measured against. It
+ * does *not* move the calendar on. The next gameweek arrives when it actually
+ * arrives, and the page picks that up on the next rebuild.
+ */
+function lockInSquad() {
+  if (!isLegal()) return flash("Fix the errors above before saving.");
+
+  const made = transfersMade();
+  const hit = hitsTaken();
+  if (made === 0 && state.confirmedForGw === currentGw()) {
+    return flash("Nothing has changed since you last saved.");
+  }
+  if (hit > 0 && !confirm(`${made} transfers with ${state.freeTransfers} free.\n\nThis costs ${hit} points. Save anyway?`)) return;
+
+  const gw = currentGw();
+  const chip = state.activeChip;
+  const wasInitialBuild = !state.confirmed;
+  if (chip) state.chipsUsed[`${chipSet(gw)}:${chip}`] = gw;
+
+  // Saving twice in one gameweek adds to that gameweek's entry rather than
+  // logging it again: you made more transfers, you did not live through it twice.
+  const capName = state.captain ? byId.get(state.captain).name : null;
+  const existing = state.history.find(h => h.gw === gw);
+  if (existing) {
+    existing.transfers += made;
+    existing.hit += hit;
+    existing.chip = chip || existing.chip;
+    existing.value = squadValue();
+    existing.captain = capName;
+  } else {
+    state.history.push({ gw, transfers: made, hit, chip, value: squadValue(), captain: capName });
+  }
+  state.totalHits = state.history.reduce((t, h) => t + (h.hit || 0), 0);
+
+  // A Free Hit squad stands for this gameweek and reverts at the next one, so
+  // that revert is deferred to the calendar rather than done here.
+  state.pendingFreeHitRevert = chip === "freehit";
+  state.confirmed = state.picks.map(p => ({ ...p }));
+  state.confirmedForGw = gw;
+
+  // Free transfers are spent now. The weekly +1 is granted when the calendar
+  // actually advances, in syncToCalendar.
+  if (!wasInitialBuild && !UNLIMITED_CHIPS.has(chip)) {
+    state.freeTransfers = Math.max(0, state.freeTransfers - made);
+  }
+
+  normaliseBench();
+  render();
+  flash(`Saved as your GW${gw} team${hit ? ` — ${hit} point hit booked` : ""}.`);
+}
+
+function chipAvailable(chipId) {
+  if (state.chipsUsed[`${chipSet(currentGw())}:${chipId}`]) return "Already played in this half of the season.";
+  if (state.activeChip && state.activeChip !== chipId) return "Only one chip per gameweek.";
+  if (chipId === "freehit" && currentGw() === 1) return "Free Hit cannot be played in Gameweek 1.";
+  return null;
+}
+
+function toggleChip(chipId) {
+  if (state.activeChip === chipId) {
+    if (chipId === "freehit" && state.preFreeHit) {
+      state.picks = state.preFreeHit.map(p => ({ ...p }));
+      state.preFreeHit = null;
+    }
+    state.activeChip = null;
+    return render();
+  }
+  const why = chipAvailable(chipId);
+  if (why) return flash(why);
+
+  // Remember the squad so a Free Hit can be undone or reverted after the week.
+  if (chipId === "freehit") state.preFreeHit = state.picks.map(p => ({ ...p }));
+  state.activeChip = chipId;
+  render();
+}
+
+/**
+ * Put the current 15 on the clipboard, comma-separated.
+ *
+ * The page keeps your squad in this browser, so transfers applied here already
+ * survive a rebuild. This is for the other direction: pasting the squad back
+ * into `config.yaml` so a fresh browser, a cleared cache or a second machine
+ * starts from the right team. `squad.players` accepts this format directly.
+ */
+async function copySquad() {
+  if (!state.picks.length) return flash("No squad to copy yet.");
+  const names = state.picks.map(p => byId.get(p.id).name).join(", ");
+
+  try {
+    await navigator.clipboard.writeText(names);
+    flash(`${state.picks.length} names copied — paste into squad.players in config.yaml.`);
+  } catch (e) {
+    // Clipboard access can be refused; fall back to selecting the text so the
+    // viewer can copy it by hand rather than losing it entirely.
+    const box = document.createElement("textarea");
+    box.value = names;
+    box.setAttribute("readonly", "");
+    box.style.cssText = "position:fixed;top:12px;left:12px;width:60vw;height:70px;z-index:99";
+    document.body.appendChild(box);
+    box.select();
+    flash("Copy the highlighted text, then click anywhere to dismiss it.");
+    const dismiss = () => { box.remove(); document.removeEventListener("click", dismiss); };
+    setTimeout(() => document.addEventListener("click", dismiss), 0);
+  }
+}
+
+function resetAll() {
+  const back = presetState();
+  const msg = back
+    ? `Discard your changes and go back to the squad this page was built with?`
+    : `Clear the squad and start again from Gameweek ${DATA.gameweek}?`;
+  if (!confirm(msg)) return;
+  state = back || freshState();
+  selectedPick = null;
+  if (back) applyBestXI();
+  render();
+}
+
+/* =====================================================================
+   Render
+   ===================================================================== */
+const el = id => document.getElementById(id);
+
+let flashTimer = null;
+function flash(msg) {
+  const box = el("notices");
+  const node = document.createElement("div");
+  node.className = "notice warn";
+  node.textContent = msg;
+  box.prepend(node);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => node.remove(), 4200);
+}
+
+function renderLedger() {
+  const made = transfersMade();
+  const hit = hitsTaken();
+  const free = state.freeTransfers;
+  const chip = CHIPS.find(c => c.id === state.activeChip);
+
+  const stats = [
+    { k: "Bank", v: "£" + money(bank()) + "m", cls: bank() < 0 ? "is-danger" : "" },
+    { k: "Squad value", v: "£" + money(squadValue()) + "m" },
+    { k: "Free transfers", v: UNLIMITED_CHIPS.has(state.activeChip) ? "∞" : `${free}`, cls: UNLIMITED_CHIPS.has(state.activeChip) ? "is-good" : "" },
+    { k: "Transfers", v: `${made}`, cls: made > free && !UNLIMITED_CHIPS.has(state.activeChip) ? "is-warn" : "" },
+    { k: "Points hit", v: hit ? `−${hit}` : "0", cls: hit ? "is-danger" : "" },
+    { k: "Chip", v: chip ? chip.name : "—", cls: chip ? "is-good" : "" },
+  ];
+
+  el("ledger").innerHTML = stats.map(s =>
+    `<div class="stat ${s.cls || ""}"><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`
+  ).join("");
+}
+
+/**
+ * This gameweek's fixture only — usually one chip, two in a double, none in a
+ * blank. The page carries several gameweeks of fixtures so it can survive a
+ * deadline without a rebuild, but a squad card showing all of them is a wall of
+ * chips. The full run belongs on the advice rows, where the horizon is the point.
+ */
+function fixtureText(player) {
+  const now = player.fixtures.filter(f => f.gw === currentGw());
+  if (!now.length) return `<span class="fdr fdr-3">BLANK</span>`;
+  return now.map(f =>
+    `<span class="fdr fdr-${f.difficulty}" title="${f.home ? "Home" : "Away"} to ${f.opp}, difficulty ${f.difficulty}">${f.opp} ${f.home ? "(H)" : "(A)"}</span>`
+  ).join(" ");
+}
+
+function cardHTML(pick) {
+  const p = byId.get(pick.id);
+  const isC = state.captain === pick.id, isV = state.vice === pick.id;
+  const flag = p.status === "available" ? "" :
+    `<span class="flag ${p.status === "doubtful" ? "doubtful" : "out"}" title="${p.status}"></span>`;
+
+  const swappable = selectedPick && selectedPick !== pick.id;
+  const cls = ["card"];
+  if (selectedPick === pick.id) cls.push("is-selected");
+  else if (swappable) cls.push("is-swappable");
+
+  return `<div class="${cls.join(" ")}" data-pos="${p.pos}" data-pick="${pick.id}" role="button" tabindex="0"
+               aria-label="${p.name}, ${p.pos}, ${p.team}">
+    ${pick.starting ? `
+      <button class="badge c ${isC ? "is-on" : ""}" data-cap="${pick.id}" title="Captain">C</button>
+      <button class="badge v ${isV ? "is-on" : ""}" data-vice="${pick.id}" title="Vice-captain">V</button>` : ""}
+    <button class="badge x" data-remove="${pick.id}" title="Remove from squad">×</button>
+    <div class="nm">${p.name}${flag}</div>
+    <div class="meta"><span>${p.team}</span><span>${p.pos}</span></div>
+    <div class="fix">${fixtureText(p)}</div>
+    <div class="figs"><span>£${money(p.price)}</span><span class="ep">${epOf(p).toFixed(1)}</span></div>
+  </div>`;
+}
+
+function slotHTML(pos) {
+  return `<button class="slot" data-slot="${pos}">+ ${pos}</button>`;
+}
+
+function renderPitch() {
+  const rows = POSITIONS.map(pos => {
+    const inPos = starters().filter(p => posOf(p.id) === pos);
+    const cards = inPos.map(cardHTML);
+    // Show an empty place only while the squad is still being built.
+    const shortfall = RULES.quota[pos] - countPos(pos);
+    if (shortfall > 0) cards.push(slotHTML(pos));
+    return `<div class="row">${cards.join("")}</div>`;
+  });
+  el("pitch").innerHTML = rows.join("");
+
+  const bench = benched();
+  const benchCards = bench.map(p => {
+    const label = posOf(p.id) === "GK" ? "GK" : String(p.benchRank);
+    return cardHTML(p).replace('<div class="meta">', `<div class="meta"><span style="color:var(--accent);font-weight:600">${label}</span>`);
+  });
+  el("bench").innerHTML = `<div class="bench-label">Bench — autosub order</div>` +
+    (benchCards.length ? benchCards.join("") : `<div class="empty">Substitutes appear here once the XI is set.</div>`);
+
+  el("formationLabel").textContent =
+    state.picks.length === RULES.squadSize && starters().length === RULES.xiSize
+      ? `Your XV — ${formation()}`
+      : `Your XV — ${state.picks.length} of 15`;
+}
+
+function runHTML(p) {
+  const fixtures = fixturesInHorizon(p);
+  if (!fixtures.length) return `<span class="fdr fdr-3">no fixtures</span>`;
+  return fixtures.map(f =>
+    `<span class="fdr fdr-${f.difficulty}" title="GW${f.gw}: ${f.home ? "home" : "away"} to ${f.opp}, difficulty ${f.difficulty}">${f.opp} ${f.home ? "(H)" : "(A)"}</span>`
+  ).join("");
+}
+
+/**
+ * Near-equal alternatives for the same outgoing player.
+ *
+ * Shown because the difference between the top option and these is inside the
+ * model's own noise: presenting only the winner would imply a confidence the
+ * numbers do not support, and the cheaper option is often the better buy.
+ */
+function altsHTML(move) {
+  if (!move.alts || !move.alts.length) return "";
+  const parts = move.alts.map(a => {
+    const p = byId.get(a.inId);
+    const cheaper = a.spend < move.spend
+      ? `, £${money(move.spend - a.spend)}m cheaper`
+      : "";
+    return `<button class="linkish" data-move="${a.outId}:${a.inId}"
+      title="Apply this instead">${p.name} +${a.gain.toFixed(1)}${cheaper}</button>`;
+  });
+  return `<div class="alts">too close to call: ${parts.join(" · ")}</div>`;
+}
+
+/**
+ * Who else could fund this signing, and who nearly could.
+ *
+ * The blocked line exists because "why not sell Pedro Porro?" has a real answer
+ * — he is £0.1m short of affording Tarkowski — and without it the pairing looks
+ * arbitrary.
+ */
+function sellAltsHTML(move) {
+  const parts = [];
+
+  if (move.sellAlts && move.sellAlts.length) {
+    const options = move.sellAlts.map(a =>
+      `<button class="linkish" data-move="${a.id}:${move.inId}"
+        title="Sell this player instead">${byId.get(a.id).name} +${a.gain.toFixed(1)}</button>`
+    );
+    parts.push(`<div class="alts">or sell instead: ${options.join(" · ")}</div>`);
+  }
+
+  if (move.sellBlocked && move.sellBlocked.length) {
+    const misses = move.sellBlocked.map(b =>
+      `${byId.get(b.id).name} (£${money(b.shortfall)}m short)`
+    );
+    parts.push(`<div class="alts" style="color:var(--warn)">cannot fund this: ${misses.join(" · ")}</div>`);
+  }
+
+  return parts.join("");
+}
+
+/** Say when a suggestion deliberately doubles up on a strong defence. */
+function doubleUpHTML(move) {
+  const d = move.doubleUp;
+  if (!d) return "";
+  return `<div class="alts" style="color:var(--good)">doubling up on the ${d.short} defence —
+    ${d.cs} clean sheets in ${d.games} last season, ${d.concededPerGame} conceded a game</div>`;
+}
+
+function moveHTML(move, isTop) {
+  const out = byId.get(move.outId), inn = byId.get(move.inId);
+  const spend = move.spend;
+  const cost = spend === 0 ? "same price" : spend > 0 ? `−£${money(spend)}m` : `+£${money(-spend)}m`;
+
+  return `<div class="move ${isTop ? "is-top" : ""}">
+    <div class="side out">
+      <div class="who">${out.name}<span class="tag">out</span></div>
+      <div class="why">${out.team} · ${reasonsOut(out)}</div>
+      <div class="runs">${runHTML(out)}</div>
+      ${sellAltsHTML(move)}
+    </div>
+    <div class="arrow">→</div>
+    <div class="side in">
+      <div class="who">${inn.name}<span class="tag">in</span></div>
+      <div class="why">${inn.team} · ${reasonsIn(inn)}</div>
+      <div class="runs">${runHTML(inn)}</div>
+      ${altsHTML(move)}
+      ${doubleUpHTML(move)}
+    </div>
+    <div class="delta">
+      <div class="g">+${move.gain.toFixed(1)}</div>
+      ${hitForNextTransfer() > 0
+        ? `<div class="cost" style="color:var(--danger)">${(move.gain - hitForNextTransfer()).toFixed(1)} after −${hitForNextTransfer()}</div>`
+        : ""}
+      <div class="cost">${cost}</div>
+      <div class="apply"><button class="btn" data-move="${move.outId}:${move.inId}">Apply</button></div>
+    </div>
+  </div>`;
+}
+
+function staleHTML() {
+  if (!dataIsStale()) return "";
+  const behind = currentGw() - DATA.gameweek;
+  return `<div class="notice warn" style="margin:11px 14px">
+    <span>The GW${DATA.gameweek} deadline has passed, so this is now GW${currentGw()}.
+    Your transfers and chips have rolled over, but the prices and projections on
+    this page are ${behind} gameweek${behind === 1 ? "" : "s"} old.
+    Rebuild with <code>fpl export-frontend</code> for current numbers.</span></div>`;
+}
+
+function renderAdvice() {
+  const box = el("advice");
+
+  if (state.picks.length !== RULES.squadSize) {
+    box.innerHTML = staleHTML() + `<div class="empty">Fill all 15 places to get transfer suggestions.</div>`;
+    return;
+  }
+
+  const moves = singleMoves(6);
+  const best = moves[0];
+  const gws = horizonGws();
+  // "GW3-3" is not a range; a single gameweek is just that gameweek.
+  const window = gws.length > 1
+    ? `GW${gws[0]}–${gws[gws.length - 1]}`
+    : `GW${gws[0] ?? DATA.gameweek}`;
+  // And a per-week figure only says something when there is more than one week.
+  const weekly = g => (horizon > 1 ? ` (${perGw(g).toFixed(1)} a week)` : "");
+
+  // What one more transfer actually costs right now. With the free one already
+  // spent this is 4 points, and a gain has to clear that before it is a gain at
+  // all — comparing the gross number against the threshold recommends moves
+  // that lose points.
+  const nextHit = hitForNextTransfer();
+  const net = best ? best.gain - nextHit : 0;
+
+  let verdict;
+  if (!best) {
+    verdict = `<div class="verdict hold"><span class="head">Roll it</span>
+      <span class="why">Nothing in your price range improves this squad over ${window}.
+      Bank the transfer and you will have two next week.</span></div>`;
+  } else if (nextHit > 0 && net <= 0) {
+    verdict = `<div class="verdict hold"><span class="head">You are done</span>
+      <span class="why">No free transfer left, so another move costs
+      <b>${nextHit} points</b>. The best one available gains
+      <b>+${best.gain.toFixed(1)}</b> over ${window}, which nets
+      <b>${net.toFixed(1)}</b> — it loses you points. Leave it, and you get
+      two transfers for GW${DATA.gameweek + 1}.</span></div>`;
+  } else if (nextHit > 0) {
+    verdict = `<div class="verdict go"><span class="head">Only with a hit</span>
+      <span class="why"><b>${byId.get(best.outId).name} → ${byId.get(best.inId).name}</b>
+      gains <b>+${best.gain.toFixed(1)}</b> over ${window} but costs ${nextHit} points,
+      netting <b>+${net.toFixed(1)}</b>. Worth it only if you believe the numbers —
+      one gameweek of evidence is thin.</span></div>`;
+  } else if (best.gain < WORTH_A_TRANSFER) {
+    verdict = `<div class="verdict hold"><span class="head">Probably roll it</span>
+      <span class="why">The best move on the board is worth about
+      <b>+${best.gain.toFixed(1)} pts</b> across ${window}${weekly(best.gain)}.
+      That is inside the noise. Holding gives you two transfers next week and more
+      information.</span></div>`;
+  } else {
+    verdict = `<div class="verdict go"><span class="head">Use it</span>
+      <span class="why"><b>${byId.get(best.outId).name} → ${byId.get(best.inId).name}</b>
+      is worth about <b>+${best.gain.toFixed(1)} pts</b> over ${window}${weekly(best.gain)}
+      and fits your £${money(bank())}m bank.</span></div>`;
+  }
+
+  const list = moves.length
+    ? `<div class="moves">${moves.map((m, i) => moveHTML(m, i === 0)).join("")}</div>`
+    : "";
+
+  const pairs = pairMoves(3).filter(p => p.gain - p.hit > 0);
+  const pairsHTML = pairs.length
+    ? `<div class="pairs"><div class="lbl">Two transfers — second one costs ${RULES.hitCost} points</div>` +
+      pairs.map(p => {
+        const net = p.gain - p.hit;
+        return `<div class="pair">
+          <span class="net ${net > 0 ? "good" : "bad"}">${net > 0 ? "+" : ""}${net.toFixed(1)} pts net</span>
+          <span style="color:var(--ink-faint)"> (+${p.gain.toFixed(1)} gross${p.hit ? `, −${p.hit} hit` : ""})</span>
+          <div class="legs">${byId.get(p.first.outId).name} → ${byId.get(p.first.inId).name}
+            &nbsp;·&nbsp; ${byId.get(p.second.outId).name} → ${byId.get(p.second.inId).name}</div>
+        </div>`;
+      }).join("") + `</div>`
+    : "";
+
+  box.innerHTML = staleHTML() + verdict + list + pairsHTML;
+}
+
+function renderArmbands() {
+  const entry = (mark, id, cls) => {
+    const p = id ? byId.get(id) : null;
+    const fixture = p ? fixturesInHorizon(p).filter(f => f.gw === currentGw()) : [];
+    const where = fixture.length
+      ? fixture.map(f => `${f.opp} ${f.home ? "(H)" : "(A)"}`).join(", ")
+      : "no fixture";
+    return `<div class="armband ${cls}" title="${p ? `${p.name} — ${where}` : "not set"}">
+      <span class="mark">${mark}</span>
+      ${p ? `<span class="who">${p.name}</span>` : `<span class="none">not set</span>`}
+    </div>`;
+  };
+  el("armbands").innerHTML =
+    entry("C", state.captain, "captain") + entry("V", state.vice, "vice");
+}
+
+function renderNotices() {
+  el("notices").innerHTML = validate().map(v =>
+    `<div class="notice ${v.level === "err" ? "err" : v.level === "ok" ? "ok" : "warn"}">${v.msg}</div>`
+  ).join("");
+}
+
+function renderChips() {
+  const set = chipSet(currentGw());
+  const head = `<div class="lbl">Chips — set ${set} (${set === 1 ? "gameweeks 1–19" : "gameweeks 20–38"}), one per gameweek</div>`;
+  el("chipbar").innerHTML = head + CHIPS.map(c => {
+    const spent = state.chipsUsed[`${set}:${c.id}`];
+    const active = state.activeChip === c.id;
+    const why = chipAvailable(c.id);
+    const cls = ["chip"];
+    if (active) cls.push("is-active");
+    if (spent) cls.push("is-spent");
+    return `<button class="${cls.join(" ")}" data-chip="${c.id}" ${spent || (why && !active) ? "disabled" : ""}
+      title="${spent ? `Played in GW${spent}` : (why || c.note)}"><span class="dot"></span>${c.name}</button>`;
+  }).join("");
+}
+
+function renderLog() {
+  if (!state.history.length) {
+    el("log").innerHTML = `<span style="color:var(--ink-faint)">Saving records your transfers and settles the hit. The gameweek itself follows the real FPL calendar — rebuild after the deadline to move to GW${currentGw() + 1}.</span>`;
+    return;
+  }
+  const rows = state.history.slice(-8).reverse().map(h =>
+    `<li>GW${h.gw}: ${h.transfers} transfer${h.transfers === 1 ? "" : "s"}` +
+    (h.hit ? `, <b style="color:var(--danger)">−${h.hit} pts</b>` : "") +
+    (h.chip ? `, ${CHIPS.find(c => c.id === h.chip).name}` : "") +
+    (h.captain ? `, captain ${h.captain}` : "") + `</li>`
+  ).join("");
+  el("log").innerHTML = `<ol>${rows}</ol>` +
+    (state.totalHits ? `<div style="margin-top:6px">Total taken in hits: <b style="color:var(--danger)">−${state.totalHits} pts</b></div>` : "");
+}
+
+const COLUMNS = [
+  { key: "name", label: "Player", sortable: true },
+  { key: "fix", label: "Fixture", sortable: false },
+  { key: "price", label: "£", sortable: true },
+  { key: "ep", label: "Model", sortable: true },
+  { key: "epFpl", label: "FPL", sortable: true },
+  { key: "ppg", label: "PPG", sortable: true },
+  { key: "owned", label: "TSB%", sortable: true },
+  { key: "add", label: "", sortable: false },
+];
+
+function renderPool() {
+  el("poolHead").innerHTML = COLUMNS.map(c =>
+    `<th data-sort="${c.sortable ? c.key : ""}" class="${sort.key === c.key ? "is-sorted" : ""}">${c.label}${
+      c.sortable && sort.key === c.key ? (sort.dir < 0 ? " ↓" : " ↑") : ""}</th>`
+  ).join("");
+
+  const q = filters.search.trim().toLowerCase();
+  let rows = DATA.players.filter(p => {
+    if (filters.pos !== "ALL" && p.pos !== filters.pos) return false;
+    if (filters.team !== "ALL" && String(p.teamId) !== filters.team) return false;
+    if (filters.avail === "fit" && p.status !== "available") return false;
+    if (q && !p.name.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    const k = sort.key;
+    const va = k === "name" ? a.name.toLowerCase() : a[k];
+    const vb = k === "name" ? b.name.toLowerCase() : b[k];
+    if (va < vb) return -sort.dir;
+    if (va > vb) return sort.dir;
+    return 0;
+  });
+
+  el("poolCount").textContent = `${rows.length} shown`;
+
+  if (!rows.length) {
+    el("poolBody").innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">No players match those filters.</td></tr>`;
+    return;
+  }
+
+  el("poolBody").innerHTML = rows.slice(0, 250).map(p => {
+    const owned = !!pickOf(p.id);
+    const why = owned ? "In your squad" : canAdd(p);
+    const flag = p.status === "available" ? "" :
+      `<span class="flag ${p.status === "doubtful" ? "doubtful" : "out"}" title="${p.status}${p.chance !== null ? ` — ${p.chance}% chance` : ""}"></span>`;
+    return `<tr class="${owned ? "is-owned" : ""}">
+      <td><div class="p-name">${p.name}${flag}</div><div class="p-sub">${p.team} · ${p.pos}</div></td>
+      <td>${fixtureText(p)}</td>
+      <td class="num">${money(p.price)}</td>
+      <td class="num" ${metric === "ep" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ep.toFixed(1)}</td>
+      <td class="num" ${metric === "epFpl" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.epFpl.toFixed(1)}</td>
+      <td class="num" ${metric === "ppg" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ppg.toFixed(1)}</td>
+      <td class="num">${p.owned.toFixed(1)}</td>
+      <td>${owned
+        ? `<button class="add" data-remove="${p.id}" title="Remove from squad" style="color:var(--danger)">−</button>`
+        : `<button class="add" data-add="${p.id}" ${why ? "disabled" : ""} title="${why || "Add to squad"}">+</button>`}</td>
+    </tr>`;
+  }).join("");
+}
+
+function render() {
+  save();
+  renderLedger();
+  renderAdvice();
+  renderArmbands();
+  renderNotices();
+  renderPitch();
+  renderChips();
+  renderLog();
+  renderPool();
+  el("confirm").disabled = !isLegal();
+  el("confirm").textContent = state.confirmedForGw === currentGw()
+    ? `Saved for GW${currentGw()}`
+    : `Save as my GW${currentGw()} team`;
+  el("gwLabel").textContent = `GW${currentGw()}`;
+
+  const deadline = currentDeadline();
+  el("deadline").textContent = deadline
+    ? `deadline ${deadline.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+    : "";
+}
+
+/* =====================================================================
+   Wiring
+   ===================================================================== */
+function initChrome() {
+  // Every horizon up to the one the page was built with, not a sparse 1/3/5:
+  // the interesting comparison is often one step, and skipping 2 and 4 hides it.
+  const maxHorizon = Math.max(1, Number(DATA.horizon) || 5);
+  el("horizon").innerHTML = Array.from({ length: maxHorizon }, (_, i) => i + 1)
+    .map(h => `<option value="${h}" ${horizon === h ? "selected" : ""}>${h === 1 ? "1 gameweek" : h + " gameweeks"}</option>`)
+    .join("");
+
+  el("metric").innerHTML = METRICS.map(m =>
+    `<option value="${m.key}" ${metric === m.key ? "selected" : ""}>${m.label}</option>`).join("");
+
+  el("posTabs").innerHTML = ["ALL", ...POSITIONS].map(p =>
+    `<button class="tab ${filters.pos === p ? "is-on" : ""}" data-pos="${p}">${p === "ALL" ? "All" : p}</button>`
+  ).join("");
+
+  el("teamFilter").innerHTML = `<option value="ALL">All clubs</option>` +
+    DATA.teams.map(t => `<option value="${t.id}">${t.short}</option>`).join("");
+
+  el("foot").innerHTML =
+    `<p style="margin:0 0 6px"><b>Model</b> xPts comes from the <code>${DATA.model}</code> baseline; ` +
+    `<b>FPL</b> xPts is the game's own figure. Ranking, sorting and auto-pick all follow whichever you select. ` +
+    `In the project's walk-forward backtest the FPL figure ordered players better within position ` +
+    `(Spearman 0.69 against 0.40), and the baseline is weakest of all in the opening weeks — with only ` +
+    `${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} played it reads cheap over-performers as elite. ` +
+    `It is here to be compared against, not trusted yet.</p>` +
+    `<p style="margin:0">GW${DATA.gameweek}, ${DATA.season}. Prices and fixtures captured ` +
+    `${new Date(DATA.generatedAt).toLocaleDateString()} — rebuild with <code>python -m src.cli export-frontend</code> ` +
+    `before each deadline. Your squad is saved in this browser only.</p>`;
+}
+
+document.addEventListener("click", e => {
+  const t = e.target;
+
+  const add = t.closest("[data-add]");
+  if (add) return addPlayer(Number(add.dataset.add));
+
+  const rm = t.closest("[data-remove]");
+  if (rm) { e.stopPropagation(); return removePlayer(Number(rm.dataset.remove)); }
+
+  const cap = t.closest("[data-cap]");
+  if (cap) {
+    e.stopPropagation();
+    const id = Number(cap.dataset.cap);
+    if (state.vice === id) state.vice = state.captain;
+    state.captain = state.captain === id ? null : id;
+    return render();
+  }
+
+  const vice = t.closest("[data-vice]");
+  if (vice) {
+    e.stopPropagation();
+    const id = Number(vice.dataset.vice);
+    if (state.captain === id) state.captain = state.vice;
+    state.vice = state.vice === id ? null : id;
+    return render();
+  }
+
+  const mv = t.closest("[data-move]");
+  if (mv) {
+    const [outId, inId] = mv.dataset.move.split(":").map(Number);
+    return applyMove({ outId, inId });
+  }
+
+  const chip = t.closest("[data-chip]");
+  if (chip && !chip.disabled) return toggleChip(chip.dataset.chip);
+
+  const slot = t.closest("[data-slot]");
+  if (slot) { filters.pos = slot.dataset.slot; initChrome(); return render(); }
+
+  const card = t.closest("[data-pick]");
+  if (card) {
+    const id = Number(card.dataset.pick);
+    if (selectedPick === null) selectedPick = id;
+    else if (selectedPick === id) selectedPick = null;
+    else return attemptSwap(selectedPick, id);
+    return render();
+  }
+
+  const tab = t.closest("[data-pos]");
+  if (tab && tab.classList.contains("tab")) { filters.pos = tab.dataset.pos; initChrome(); return render(); }
+
+  const th = t.closest("th[data-sort]");
+  if (th && th.dataset.sort) {
+    const k = th.dataset.sort;
+    sort = { key: k, dir: sort.key === k ? -sort.dir : (k === "name" ? 1 : -1) };
+    return renderPool();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && selectedPick !== null) { selectedPick = null; render(); }
+  if (e.key === "Enter" || e.key === " ") {
+    const card = e.target.closest?.("[data-pick]");
+    if (card) { e.preventDefault(); card.click(); }
+  }
+});
+
+el("search").addEventListener("input", e => { filters.search = e.target.value; renderPool(); });
+el("teamFilter").addEventListener("change", e => { filters.team = e.target.value; renderPool(); });
+el("availFilter").addEventListener("change", e => { filters.avail = e.target.value; renderPool(); });
+el("horizon").addEventListener("change", e => { horizon = Number(e.target.value); render(); });
+el("metric").addEventListener("change", e => {
+  metric = e.target.value;
+  if (["ep", "epFpl", "ppg"].includes(sort.key)) sort = { key: metric === "form" ? "ep" : metric, dir: -1 };
+  render();
+});
+el("copySquad").addEventListener("click", copySquad);
+el("autoSquad").addEventListener("click", autoPickSquad);
+el("confirm").addEventListener("click", lockInSquad);
+el("reset").addEventListener("click", resetAll);
+
+initChrome();
+if (startedFromPreset) applyBestXI();   // gives the loaded squad a legal XI and a captain
+render();
+
+// A page left open over a Friday evening should not still be showing last
+// week. Cheap enough to poll: it only does work when the gameweek changes.
+let renderedGw = currentGw();
+setInterval(() => {
+  const live = currentGw();
+  if (live === renderedGw) return;
+  renderedGw = live;
+  syncToCalendar();
+  render();
+  flash(`The GW${live - 1} deadline has passed — now planning GW${live}.`);
+}, 60_000);
+</script>
