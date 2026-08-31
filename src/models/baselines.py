@@ -51,9 +51,11 @@ class FPLExpectedPoints(Predictor):
     name = "fpl_ep"
 
     def predict(self, test: pd.DataFrame) -> np.ndarray:
+        """NaN where FPL's figure is missing, so the harness can tell the
+        difference between "predicted nothing" and "was not asked"."""
         if "xP" not in test.columns:
-            return np.zeros(len(test), dtype=float)
-        return test["xP"].fillna(0.0).to_numpy(dtype=float)
+            return np.full(len(test), np.nan, dtype=float)
+        return test["xP"].to_numpy(dtype=float)
 
 
 class MinutesTimesPP90(Predictor):

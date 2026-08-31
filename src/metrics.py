@@ -77,6 +77,11 @@ def summarise(per_gw: pd.DataFrame) -> pd.Series:
     return pd.Series(
         {
             "gameweeks": int(len(per_gw)),
+            # How many gameweeks actually produced a rank correlation. A model
+            # whose data is missing for most of a season scores its Spearman on
+            # the handful that remain, which is not comparable to one measured
+            # on all of them — so the count travels with the number.
+            "ranked_gws": int(per_gw["spearman_by_position"].notna().sum()),
             "rows": int(n.sum()),
             "mae": float(np.average(per_gw["mae"], weights=n)),
             "rmse": float(np.average(per_gw["rmse"], weights=n)),

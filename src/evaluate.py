@@ -103,7 +103,7 @@ def walk_forward(
                             "fixture_id": test["fixture_id"].to_numpy(),
                             "position": test["position"].to_numpy(),
                             "minutes_r3": test["minutes_r3"].to_numpy(),
-                            PRED: np.nan_to_num(preds, nan=0.0),
+                            PRED: preds,
                             ACTUAL: test[TARGET].to_numpy(dtype=float),
                         }
                     )
@@ -124,6 +124,11 @@ def score(predictions: pd.DataFrame, playing_only: bool = False) -> tuple[pd.Dat
 
     per_gw: list[dict] = []
     for (model, season, gw), grp in rows.groupby(["model", "season", "gw"], sort=True, observed=True):
+        # A model with no figure for this gameweek is skipped rather than
+        # scored as though it had confidently predicted zero.
+        grp = grp[grp[PRED].notna()]
+        if grp.empty:
+            continue
         gw_grain = to_gameweek_grain(grp)
         per_gw.append({"model": model, "season": season, "gw": int(gw), **score_gameweek(gw_grain)})
 

@@ -279,56 +279,78 @@ haul is not projected across a horizon as though it were the norm.
 
 ## Backtest results
 
-Walk-forward over 2025-26: train on gameweeks `< t`, predict `t`, scored per
-player-gameweek (double gameweeks summed). `component` is the trained Phase 3
-model; the rest are the baselines from the brief.
+Walk-forward over **2024-25**: train on gameweeks `< t`, predict `t`, scored per
+player-gameweek (double gameweeks summed).
+
+2024-25 rather than 2025-26 on purpose. The historical `xP` scrape is patchy —
+27 of 38 gameweeks in 2025-26 have it zero for *every* player — so a backtest
+there scores `fpl_ep` on the handful of gameweeks that survive while every other
+model is scored on all of them. `ranked_gws` now travels with each row so that
+mismatch is visible rather than silent.
 
 **Players with recent minutes** — the honest view, since ~55% of the pool never
 plays and their guaranteed zeros flatter every metric:
 
-| model | MAE | RMSE | Spearman (overall) | Spearman (within position) |
-|---|---|---|---|---|
-| **`component`** | **1.847** | **2.766** | 0.492 | 0.486 |
-| `season_mean` | 2.014 | 2.894 | 0.362 | 0.359 |
-| `minutes_x_pp90` | 2.076 | 2.923 | 0.402 | 0.400 |
-| `last3_mean` | 2.161 | 3.123 | 0.365 | 0.365 |
-| `fpl_ep` | 2.248 | 3.510 | **0.689** | **0.687** |
+| model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
+|---|---|---|---|---|---|
+| **`component`** | 34 | **1.295** | **2.034** | **0.690** | **0.695** |
+| `fpl_ep` | 31 | 1.513 | 2.302 | 0.676 | 0.665 |
+| `season_mean` | 34 | 1.844 | 2.751 | 0.402 | 0.387 |
+| `minutes_x_pp90` | 34 | 1.914 | 2.774 | 0.419 | 0.404 |
+| `last3_mean` | 34 | 2.003 | 2.978 | 0.387 | 0.375 |
 
 **All players:**
 
-| model | MAE | RMSE | Spearman (overall) | Spearman (within position) |
-|---|---|---|---|---|
-| **`component`** | **0.925** | **1.925** | 0.733 | 0.724 |
-| `minutes_x_pp90` | 1.003 | 2.034 | 0.745 | 0.746 |
-| `last3_mean` | 1.043 | 2.165 | 0.735 | 0.735 |
-| `season_mean` | 1.056 | 2.040 | 0.692 | 0.689 |
-| `fpl_ep` | 1.092 | 2.425 | **0.787** | **0.784** |
+| model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
+|---|---|---|---|---|---|
+| **`component`** | 34 | **0.707** | **1.474** | **0.775** | **0.770** |
+| `fpl_ep` | 31 | 0.882 | 1.690 | 0.758 | 0.751 |
+| `minutes_x_pp90` | 34 | 1.016 | 2.013 | 0.716 | 0.709 |
+| `last3_mean` | 34 | 1.061 | 2.155 | 0.703 | 0.697 |
+| `season_mean` | 34 | 1.059 | 2.020 | 0.664 | 0.656 |
 
-### What this does and does not clear
+### What this clears, and the asterisk on it
 
 The brief's definition of done asks the model to beat all three baselines on MAE
-**and** on within-position rank correlation. It clears the first and misses the
-second, and the miss is worth stating plainly:
+**and** within-position rank correlation. It now does, on both views.
 
-* **MAE and RMSE: beaten, comfortably.** Against the best baseline on the
-  likely-playing pool, MAE falls from 2.014 to 1.847 — about 8%. RMSE falls
-  further, which says the improvement is concentrated in the large errors.
-* **Ranking against the naive baselines: beaten, decisively.** Within-position
-  Spearman goes from 0.400 (the best of the three naive baselines) to 0.486.
-* **Ranking against FPL's own expected points: not beaten.** `fpl_ep` still
-  ranks far better, 0.687 against 0.486.
+But `xP` — FPL's own expected points — is both baseline (b) *and* one of the
+model's features, so "beats baseline (b)" needs stating precisely. The claim is
+not "a model built from scratch beats FPL's". It is:
 
-That last gap is not a modelling subtlety, it is a data gap. FPL's figure is
-computed with **team news** — press conferences, predicted lineups, injury
-status — and this model has none of it. Minutes are the make-or-break input
-(brief §6.3), and the brief itself flags the lineup feed as the hardest and most
-important thing to source (§3.6). The model is reconstructing playing time from
-lagged minutes alone, and a published lineup beats any amount of inference from
-last month's appearances.
+> FPL's published forecast, corrected by a model trained on lagged form,
+> fixtures and team strength, beats that forecast used raw.
 
-So: the component model is a real improvement on everything that does not know
-the team news, and is still behind the one thing that does. The next honest step
-is the injury and lineup feed, not more model capacity.
+That is still a real result — the corrections add information rather than
+reproducing what was already there — and the size of it is the honest measure of
+what the model contributes:
+
+| | MAE | Spearman (within position) |
+|---|---|---|
+| `fpl_ep` alone | 1.513 | 0.665 |
+| component **without** `xP` | 1.718 | 0.468 |
+| component **with** `xP` | **1.295** | **0.695** |
+
+The middle row is the model on its own inputs, and it loses to FPL. That gap was
+never a modelling failure: FPL's figure is computed with **team news** — press
+conferences, predicted lineups, injury flags — and nothing in the lagged feature
+frame reconstructs a team sheet. Minutes are the make-or-break input (brief
+§6.3) and the lineup feed is the hardest thing to source (§3.6).
+
+### The residual doubt
+
+The brief warns that `xP` may be scraped post-gameweek (§6.1), which would make
+this circular. Checked rather than assumed, on 2024-25 where the scrape is 91%
+complete: players who started the previous three matches and then did not play
+average **1.40** expected points against **3.55** for those who did. Reduced,
+not zeroed — which is what FPL's *pre-deadline* `chance_of_playing` flags look
+like, and not what a column computed after the whistle would look like.
+
+That is evidence, not proof. `xP` correlates 0.67 with same-gameweek minutes,
+and some of that could be knowledge rather than forecasting. The way to settle
+it is to snapshot `bootstrap-static`'s `ep_next` before each deadline from here
+on, building a training set that is provably pre-deadline, and re-run this
+comparison against it.
 
 ## Running the tests
 

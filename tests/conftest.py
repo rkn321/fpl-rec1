@@ -154,6 +154,12 @@ def make_synthetic_season(season: str = "2099-00", seed: int = 0) -> pd.DataFram
                 )
 
     df = pd.DataFrame(rows)
+
+    # FPL publishes one expected-points figure per player per gameweek, so both
+    # legs of a double carry the same number. Generating it per fixture made the
+    # synthetic data unlike the real thing in exactly the way the double-gameweek
+    # test checks for.
+    df["xP"] = df.groupby(["player_id", "gw"])["xP"].transform("first")
     # Points roughly follow the real scoring rules so the target is not noise.
     goal_pts = df["position"].map({"GK": 6, "DEF": 6, "MID": 5, "FWD": 4})
     cs_pts = df["position"].map({"GK": 4, "DEF": 4, "MID": 1, "FWD": 0})
@@ -181,6 +187,11 @@ def make_double_gameweek_season(seed: int = 3) -> pd.DataFrame:
     df.loc[moved, "gw"] = 5
     # The second fixture kicks off three days later, as a real double does.
     df.loc[moved, "kickoff_time"] = df.loc[moved, "kickoff_time"] + pd.Timedelta(days=3)
+
+    # Re-share the gameweek-level columns after relabelling: the two legs are now
+    # one gameweek, so FPL would publish a single expected-points figure covering
+    # both, not one per fixture.
+    df["xP"] = df.groupby(["player_id", "gw"])["xP"].transform("first")
     return df.sort_values(["season", "player_id", "gw", "kickoff_time"]).reset_index(drop=True)
 
 

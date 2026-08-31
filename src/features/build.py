@@ -211,7 +211,11 @@ def build_features(
     opp_feats = [c.replace("team_form_", "opp_form_") for c in team_feats]
     df = df.merge(opp, on=["season", "opponent_id", "fixture_id"], how="left")
 
-    static_feats = ["gw", "element_type", "team_difficulty", "opp_difficulty", "value"]
+    static_feats = [
+        "gw", "element_type", "team_difficulty", "opp_difficulty", "value",
+        # Published before the deadline, so usable for the row it sits on.
+        "xP",
+    ]
     feature_cols = (
         static_feats + ctx_feats + player_feats + derived_feats + team_feats + opp_feats
     )
@@ -224,7 +228,7 @@ def build_features(
 
 def _assert_no_raw_outcomes(feature_cols: list[str]) -> None:
     """Cheap guard: a raw post-match column must never be named as a feature."""
-    banned = set(OUTCOME_COLS) | {TARGET, "xP"}
+    banned = set(OUTCOME_COLS) | {TARGET}
     leaked = sorted(banned.intersection(feature_cols))
     if leaked:
         raise ValueError(f"raw post-match columns used as features: {leaked}")

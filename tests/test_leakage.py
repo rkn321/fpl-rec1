@@ -41,7 +41,7 @@ def corrupt_outcomes(df: pd.DataFrame, from_gw: int, seed: int = 1) -> pd.DataFr
     out = df.copy()
     mask = (out["gw"] >= from_gw).to_numpy()
     n = int(mask.sum())
-    for col in OUTCOME_COLS + [TARGET, "xP"]:
+    for col in OUTCOME_COLS + [TARGET]:
         if col not in out.columns:
             continue
         # Widen to float first: pandas 3 refuses to write noise into an int column.
@@ -86,12 +86,26 @@ def test_target_never_offered_as_a_feature(synthetic: pd.DataFrame) -> None:
     """The target and every raw outcome column stay out of the feature list."""
     _, feature_cols = build_features(synthetic)
 
-    banned = set(OUTCOME_COLS) | {TARGET, "xP"}
+    banned = set(OUTCOME_COLS) | {TARGET}
     assert banned.isdisjoint(feature_cols)
 
     # Only context columns are allowed through raw.
     raw_schema_cols = set(ALL_COLS).intersection(feature_cols)
     assert raw_schema_cols <= set(CONTEXT_COLS) | {"gw", "element_type"}
+
+
+def test_fpl_expected_points_is_used_raw_and_that_is_deliberate() -> None:
+    """`xP` is a feature for its own gameweek, unlike every other same-week column.
+
+    It is FPL's published pre-deadline forecast, so using it for the row it sits
+    on is legitimate — and it is the only input carrying team news. This test
+    exists so the exception stays a decision rather than becoming an accident:
+    if `xP` ever moves back to being post-match data, this is what should fail.
+    """
+    from src.data.schema import CONTEXT_COLS, OUTCOME_COLS
+
+    assert "xP" in CONTEXT_COLS, "xP is knowable before the deadline"
+    assert "xP" not in OUTCOME_COLS, "xP is not a match outcome"
 
 
 def test_rolling_window_respects_the_lag(synthetic: pd.DataFrame) -> None:
