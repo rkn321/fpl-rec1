@@ -11,11 +11,16 @@ turns that into ranked transfer advice for a real squad.
 
 **Repository:** https://github.com/rkn321/fpl-rec1
 
-Built against [`fpl-model-spec.md`](fpl-model-spec.md). **Phases 1 and 2 are
-complete**: the data foundation, a leakage-safe feature frame, the three
-baselines, and the walk-forward evaluation harness. Phases 3–5 (component
-models, enrichment, optimiser) are scaffolded with design notes and not yet
-implemented.
+Built against [`fpl-model-spec.md`](fpl-model-spec.md). **Phases 1–3 are
+complete**: the data foundation, a leakage-safe feature frame, the baselines and
+walk-forward harness, and gradient-boosted component models for minutes, attack,
+defence and bonus, combined through the scoring rules. Phase 4 (Understat xG,
+odds, the injury and lineup feed) and Phase 5 (the optimiser) are scaffolded with
+design notes and not yet implemented.
+
+The component model beats every baseline on MAE and beats the naive baselines on
+ranking, but is still behind FPL's own expected points at ordering players — see
+[what this does and does not clear](#what-this-does-and-does-not-clear).
 
 On top of that sits a self-contained transfer tool — see
 [Frontend](#frontend) — which scores every legal swap by its effect on your
@@ -163,11 +168,13 @@ src/
   models/
     scoring.py            2026/27 scoring rules (implemented + verified)
     baselines.py          the three baselines
-    minutes.py            Phase 3 — stub with design notes
-    attack.py             Phase 3 — stub
-    defence.py            Phase 3 — stub
-    bonus.py              Phase 3 — stub
-    combine.py            Phase 3 — stub
+    base.py               shared LightGBM wrapper, recency weights, Poisson tails
+    minutes.py            p(play), p(60+), expected minutes
+    attack.py             goals and assists as per-90 rates (Poisson)
+    defence.py            team clean sheet, goals conceded, saves, DEFCON
+    bonus.py              BPS, ranked within fixture -> expected bonus
+    combine.py            components -> expected points via the scoring rules
+    component.py          the assembled model, wired into the harness
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
@@ -273,40 +280,55 @@ haul is not projected across a horizon as though it were the norm.
 ## Backtest results
 
 Walk-forward over 2025-26: train on gameweeks `< t`, predict `t`, scored per
-player-gameweek (double gameweeks summed).
+player-gameweek (double gameweeks summed). `component` is the trained Phase 3
+model; the rest are the baselines from the brief.
 
-**All players** (~780 rows per gameweek):
-
-| model | MAE | RMSE | Spearman (overall) | Spearman (within position) |
-|---|---|---|---|---|
-| `minutes_x_pp90` | **1.003** | 2.034 | 0.745 | 0.746 |
-| `last3_mean` | 1.043 | 2.165 | 0.735 | 0.735 |
-| `season_mean` | 1.056 | 2.040 | 0.692 | 0.689 |
-| `fpl_ep` | 1.092 | 2.425 | **0.787** | **0.784** |
-
-**Players with recent minutes** (~357 per gameweek):
+**Players with recent minutes** — the honest view, since ~55% of the pool never
+plays and their guaranteed zeros flatter every metric:
 
 | model | MAE | RMSE | Spearman (overall) | Spearman (within position) |
 |---|---|---|---|---|
-| `season_mean` | **2.014** | 2.894 | 0.362 | 0.359 |
+| **`component`** | **1.847** | **2.766** | 0.492 | 0.486 |
+| `season_mean` | 2.014 | 2.894 | 0.362 | 0.359 |
 | `minutes_x_pp90` | 2.076 | 2.923 | 0.402 | 0.400 |
 | `last3_mean` | 2.161 | 3.123 | 0.365 | 0.365 |
 | `fpl_ep` | 2.248 | 3.510 | **0.689** | **0.687** |
 
-Read these as the bar Phase 3 has to clear, and note the split verdict: no single
-baseline wins both. FPL's own `ep` has the *worst* MAE and by far the *best*
-ranking, which is the more useful property — you pick players by ordering them,
-not by their absolute predicted score. The honest target for a component model is
-to beat `minutes_x_pp90` on MAE **and** `fpl_ep` on within-position Spearman.
+**All players:**
 
-Two caveats on those numbers:
+| model | MAE | RMSE | Spearman (overall) | Spearman (within position) |
+|---|---|---|---|---|
+| **`component`** | **0.925** | **1.925** | 0.733 | 0.724 |
+| `minutes_x_pp90` | 1.003 | 2.034 | 0.745 | 0.746 |
+| `last3_mean` | 1.043 | 2.165 | 0.735 | 0.735 |
+| `season_mean` | 1.056 | 2.040 | 0.692 | 0.689 |
+| `fpl_ep` | 1.092 | 2.425 | **0.787** | **0.784** |
 
-- The all-players view is flattered by the ~55% of the pool who do not play. Their
-  guaranteed zeros are easy and inflate both MAE and rank correlation. The
-  likely-playing split is the more honest read.
-- `fpl_ep` uses the vaastav `xP` column, which is scraped around the gameweek
-  rather than strictly at the deadline (§6.1), so it may be a slightly generous
-  bar. It is used only as a baseline and never as a feature.
+### What this does and does not clear
+
+The brief's definition of done asks the model to beat all three baselines on MAE
+**and** on within-position rank correlation. It clears the first and misses the
+second, and the miss is worth stating plainly:
+
+* **MAE and RMSE: beaten, comfortably.** Against the best baseline on the
+  likely-playing pool, MAE falls from 2.014 to 1.847 — about 8%. RMSE falls
+  further, which says the improvement is concentrated in the large errors.
+* **Ranking against the naive baselines: beaten, decisively.** Within-position
+  Spearman goes from 0.400 (the best of the three naive baselines) to 0.486.
+* **Ranking against FPL's own expected points: not beaten.** `fpl_ep` still
+  ranks far better, 0.687 against 0.486.
+
+That last gap is not a modelling subtlety, it is a data gap. FPL's figure is
+computed with **team news** — press conferences, predicted lineups, injury
+status — and this model has none of it. Minutes are the make-or-break input
+(brief §6.3), and the brief itself flags the lineup feed as the hardest and most
+important thing to source (§3.6). The model is reconstructing playing time from
+lagged minutes alone, and a published lineup beats any amount of inference from
+last month's appearances.
+
+So: the component model is a real improvement on everything that does not know
+the team news, and is still behind the one thing that does. The next honest step
+is the injury and lineup feed, not more model capacity.
 
 ## Running the tests
 

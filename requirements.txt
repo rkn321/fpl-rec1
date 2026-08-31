@@ -4,7 +4,11 @@ pyarrow>=15
 requests>=2.31
 PyYAML>=6.0
 pytest>=8.0
-# Phase 3+ (component models / optimiser) — not needed for Phases 1-2:
-# lightgbm>=4.3
-# scikit-learn>=1.4
+
+# Phase 3 component models
+lightgbm>=4.3
+scikit-learn>=1.4
+scipy>=1.11
+
+# Phase 5 optimiser — not yet implemented
 # pulp>=2.8

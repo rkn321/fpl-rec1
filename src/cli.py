@@ -24,7 +24,7 @@ from . import pipeline
 from .config import load_config
 from .data.fpl_api import FPLClient
 from .evaluate import run_backtest
-from .models.baselines import default_baselines
+from .models.baselines import all_predictors, default_baselines
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -56,10 +56,11 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         df, feature_cols = pipeline.load_processed(config)
 
     season = args.season or config.season_history[-1]
+    predictors = default_baselines() if args.baselines_only else all_predictors()
     results = run_backtest(
         df,
         feature_cols,
-        predictors=default_baselines(),
+        predictors=predictors,
         season=season,
         min_train_gws=int(config.evaluate["min_train_gws"]),
     )
@@ -95,7 +96,7 @@ def cmd_predict(args: argparse.Namespace) -> int:
         print(f"no rows for gameweek {gw}", file=sys.stderr)
         return 1
 
-    predictor = default_baselines()[args.model]
+    predictor = all_predictors()[args.model]
     predictor.fit(df[df["gw"] < gw], feature_cols)
     target["expected_points"] = predictor.predict(target)
 
@@ -211,17 +212,27 @@ def main(argv: list[str] | None = None) -> int:
     p_bt = sub.add_parser("backtest", parents=[common], help="walk-forward baseline backtest")
     p_bt.add_argument("--season", default=None, help="season to test (default: latest historical)")
     p_bt.add_argument("--rebuild", action="store_true", help="rebuild features first")
+    p_bt.add_argument(
+        "--baselines-only", action="store_true",
+        help="skip the trained component model (much faster)",
+    )
     p_bt.set_defaults(func=cmd_backtest)
 
     p_pred = sub.add_parser("predict", parents=[common], help="expected points for the upcoming gameweek")
     p_pred.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
-    p_pred.add_argument("--model", default="minutes_x_pp90", help="predictor name")
+    p_pred.add_argument(
+        "--model", default="component",
+        help="predictor name: component (trained) or a baseline",
+    )
     p_pred.add_argument("--top", type=int, default=25, help="rows to print")
     p_pred.set_defaults(func=cmd_predict)
 
     p_front = sub.add_parser("export-frontend", parents=[common], help="build the squad-picker HTML page")
     p_front.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
-    p_front.add_argument("--model", default="minutes_x_pp90", help="predictor name")
+    p_front.add_argument(
+        "--model", default="component",
+        help="predictor supplying the model xPts column",
+    )
     p_front.add_argument(
         "--squad", default=None,
         help="comma-separated player names (default: squad.players in config.yaml)"

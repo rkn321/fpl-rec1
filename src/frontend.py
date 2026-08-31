@@ -25,7 +25,7 @@ import pandas as pd
 
 from .config import Config, load_config
 from .data.fpl_api import ELEMENT_TYPE_TO_POSITION, FPLAPIError, FPLClient
-from .models.baselines import Predictor, default_baselines
+from .models.baselines import Predictor, all_predictors
 
 log = logging.getLogger(__name__)
 
@@ -357,7 +357,7 @@ def build_player_data(
     config: Config | None = None,
     client: FPLClient | None = None,
     gw: int | None = None,
-    model: str = "minutes_x_pp90",
+    model: str = "component",
     squad: list[str] | None = None,
     bank: int | None = None,
     horizon: int = 5,
@@ -374,7 +374,7 @@ def build_player_data(
     frame, feature_cols = pipeline.build(config, upcoming_gw=gw, client=client)
     target = frame[(frame["season"] == config.season_current) & (frame["gw"] == gw)].copy()
 
-    predictor: Predictor = default_baselines()[model]
+    predictor: Predictor = all_predictors()[model]
     predictor.fit(frame[frame["gw"] < gw], feature_cols)
     target["ep"] = predictor.predict(target)
 
@@ -482,7 +482,7 @@ def export(
     config: Config | None = None,
     client: FPLClient | None = None,
     gw: int | None = None,
-    model: str = "minutes_x_pp90",
+    model: str = "component",
     squad: list[str] | None = None,
     bank: int | None = None,
     horizon: int = 5,

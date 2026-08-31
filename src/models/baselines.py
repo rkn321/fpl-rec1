@@ -80,3 +80,17 @@ def default_baselines() -> dict[str, Predictor]:
     """The bar for Phase 3, keyed by name."""
     preds = [Last3Mean(), FPLExpectedPoints(), MinutesTimesPP90(), SeasonMean()]
     return {p.name: p for p in preds}
+
+
+def all_predictors() -> dict[str, Predictor]:
+    """The baselines plus the trained component model.
+
+    Imported lazily: the baselines must stay usable without lightgbm installed,
+    and `component` imports this module.
+    """
+    from .component import ComponentModel
+
+    preds = default_baselines()
+    model = ComponentModel()
+    preds[model.name] = model
+    return preds
