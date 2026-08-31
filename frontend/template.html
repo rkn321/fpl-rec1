@@ -2123,18 +2123,26 @@ function renderAdvice() {
   const nextHit = hitForNextTransfer();
   const net = best ? best.gain - nextHit : 0;
 
+  // What holding actually banks. Saying "two next week" assumed you had one in
+  // hand — with the free transfer already spent on a hit, holding gets you one.
+  const nextWeekFts = Math.min(
+    RULES.maxRolledTransfers,
+    Math.max(0, state.freeTransfers - transfersMade()) + RULES.freeTransfersPerGw
+  );
+  const ftPhrase = `${nextWeekFts} free transfer${nextWeekFts === 1 ? "" : "s"}`;
+
   let verdict;
   if (!best) {
     verdict = `<div class="verdict hold"><span class="head">Roll it</span>
       <span class="why">Nothing in your price range improves this squad over ${window}.
-      Bank the transfer and you will have two next week.</span></div>`;
+      Bank it and you start GW${currentGw() + 1} with ${ftPhrase}.</span></div>`;
   } else if (nextHit > 0 && net <= 0) {
     verdict = `<div class="verdict hold"><span class="head">You are done</span>
       <span class="why">No free transfer left, so another move costs
       <b>${nextHit} points</b>. The best one available gains
       <b>+${best.gain.toFixed(1)}</b> over ${window}, which nets
       <b>${net.toFixed(1)}</b> — it loses you points. Leave it, and you get
-      two transfers for GW${DATA.gameweek + 1}.</span></div>`;
+      ${ftPhrase} for GW${currentGw() + 1}.</span></div>`;
   } else if (nextHit > 0) {
     verdict = `<div class="verdict go"><span class="head">Only with a hit</span>
       <span class="why"><b>${byId.get(best.outId).name} → ${byId.get(best.inId).name}</b>
@@ -2145,7 +2153,7 @@ function renderAdvice() {
     verdict = `<div class="verdict hold"><span class="head">Probably roll it</span>
       <span class="why">The best move on the board is worth about
       <b>+${best.gain.toFixed(1)} pts</b> across ${window}${weekly(best.gain)}.
-      That is inside the noise. Holding gives you two transfers next week and more
+      That is inside the noise. Holding gives you ${ftPhrase} next week and more
       information.</span></div>`;
   } else {
     verdict = `<div class="verdict go"><span class="head">Use it</span>
