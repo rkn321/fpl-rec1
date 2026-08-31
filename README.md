@@ -1,12 +1,26 @@
 # FPL Prediction Model
 
-Predicts expected FPL points per player per gameweek for the 2026/27 season.
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![pandas](https://img.shields.io/badge/pandas-2.2%2B-150458?logo=pandas&logoColor=white)](https://pandas.pydata.org/)
+[![Season](https://img.shields.io/badge/season-2026%2F27-00694E)](https://fantasy.premierleague.com/)
+[![Data](https://img.shields.io/badge/data-official%20FPL%20API-37003C)](https://fantasy.premierleague.com/api/bootstrap-static/)
+[![Repo](https://img.shields.io/badge/github-rkn321%2Ffpl--rec1-181717?logo=github&logoColor=white)](https://github.com/rkn321/fpl-rec1)
+
+Predicts expected FPL points per player per gameweek for the 2026/27 season, and
+turns that into ranked transfer advice for a real squad.
+
+**Repository:** https://github.com/rkn321/fpl-rec1
 
 Built against [`fpl-model-spec.md`](fpl-model-spec.md). **Phases 1 and 2 are
 complete**: the data foundation, a leakage-safe feature frame, the three
 baselines, and the walk-forward evaluation harness. Phases 3–5 (component
 models, enrichment, optimiser) are scaffolded with design notes and not yet
 implemented.
+
+On top of that sits a self-contained transfer tool — see
+[Frontend](#frontend) — which scores every legal swap by its effect on your
+starting XI and tells you when the best move on the board is not worth the
+4-point hit.
 
 ## Running it
 
@@ -23,6 +37,14 @@ The consequence worth remembering: because the data is baked in at build time,
 the page does not update itself. Re-run the export before each deadline.
 
 ### One-time setup
+
+```powershell
+git clone https://github.com/rkn321/fpl-rec1.git
+```
+
+```powershell
+cd fpl-rec1
+```
 
 ```powershell
 python -m venv .venv
