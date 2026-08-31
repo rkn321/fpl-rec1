@@ -677,24 +677,36 @@ const money = t => (t / 10).toFixed(1);
 /* ---------------------------------------------------------------------
    What to rank and optimise by.
 
-   The project's own walk-forward backtest is the reason this is a choice
-   rather than a constant: FPL's published expected points ranks players far
-   better within position (Spearman 0.69) than the current baseline model does
-   (0.40), and ranking is what squad selection actually needs. Early in a
-   season the model is weakest of all — it has a handful of matches to go on,
-   so it reads cheap over-performers as elite and quiet premiums as worthless.
+   The default used to be FPL's own figure, because a baseline dressed up as a
+   model ranked far worse than it. That is no longer true. On the project's
+   walk-forward backtest over 2024-25 — the season where FPL's published figure
+   is actually populated, so the comparison is fair — the trained component
+   model now orders players better within position (Spearman 0.695 against
+   0.665) and is closer on absolute points (MAE 1.295 against 1.513).
+
+   Worth knowing when reading the two columns: the model takes FPL's figure as
+   one of its inputs, so it is that forecast corrected rather than an
+   independent second opinion. Where they disagree, the disagreement is the
+   model's correction, not two methods arriving separately at different answers.
    --------------------------------------------------------------------- */
 const METRICS = [
-  { key: "epFpl", label: "FPL xPts" },
   { key: "ep", label: "Model xPts" },
+  { key: "epFpl", label: "FPL xPts" },
   { key: "ppgw", label: "Season so far" },
   { key: "form", label: "Recent form" },
 ];
 
-let metric = "epFpl";
+let metric = "ep";
 
-/** The ranking value for a player, under whichever metric is selected. */
-const epOf = p => (typeof p === "object" ? p : byId.get(p))[metric] || 0;
+/**
+ * The ranking value for a player, under whichever metric is selected.
+ *
+ * Delegates to `observedRate` rather than reading the field directly. Reading
+ * `p[metric]` looked equivalent and was not: "Season so far" is computed from
+ * points and gameweeks played rather than stored, so the direct lookup returned
+ * undefined and quietly scored every player zero — which auto-pick then acted on.
+ */
+const epOf = p => observedRate(typeof p === "object" ? p : byId.get(p));
 const priceOf = p => (typeof p === "object" ? p : byId.get(p)).price;
 
 /**
@@ -1282,10 +1294,15 @@ function priorRate(p) {
   return LAST_SEASON_WEIGHT * fromLastSeason + (1 - LAST_SEASON_WEIGHT) * byPrice;
 }
 
+/** Season points spread over the gameweeks actually played so far. */
+function pointsPerGameweek(p) {
+  const played = Math.max(0, DATA.gwsPlayed || 0);
+  return played ? p.pts / played : 0;
+}
+
 /** This season's evidence, as points per gameweek. */
 function observedRate(p) {
-  const played = Math.max(0, DATA.gwsPlayed || 0);
-  if (metric === "ppgw") return played ? p.pts / played : 0;
+  if (metric === "ppgw") return pointsPerGameweek(p);
   if (metric === "form") return p.form;
   return metric === "ep" ? p.ep : p.epFpl;   // both are already per-gameweek
 }
@@ -2241,7 +2258,7 @@ const COLUMNS = [
   { key: "price", label: "£", sortable: true },
   { key: "ep", label: "Model", sortable: true },
   { key: "epFpl", label: "FPL", sortable: true },
-  { key: "ppg", label: "PPG", sortable: true },
+  { key: "ppgw", label: "PPGW", sortable: true },
   { key: "owned", label: "TSB%", sortable: true },
   { key: "add", label: "", sortable: false },
 ];
@@ -2261,10 +2278,15 @@ function renderPool() {
     return true;
   });
 
+  const sortValue = (p, k) => {
+    if (k === "name") return p.name.toLowerCase();
+    if (k === "ppgw") return pointsPerGameweek(p);
+    return p[k];
+  };
   rows.sort((a, b) => {
     const k = sort.key;
-    const va = k === "name" ? a.name.toLowerCase() : a[k];
-    const vb = k === "name" ? b.name.toLowerCase() : b[k];
+    const va = sortValue(a, k);
+    const vb = sortValue(b, k);
     if (va < vb) return -sort.dir;
     if (va > vb) return sort.dir;
     return 0;
@@ -2288,7 +2310,7 @@ function renderPool() {
       <td class="num">${money(p.price)}</td>
       <td class="num" ${metric === "ep" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ep.toFixed(1)}</td>
       <td class="num" ${metric === "epFpl" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.epFpl.toFixed(1)}</td>
-      <td class="num" ${metric === "ppg" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ppg.toFixed(1)}</td>
+      <td class="num" ${metric === "ppgw" ? 'style="color:var(--accent);font-weight:600"' : ""}>${pointsPerGameweek(p).toFixed(1)}</td>
       <td class="num">${p.owned.toFixed(1)}</td>
       <td>${owned
         ? `<button class="add" data-remove="${p.id}" title="Remove from squad" style="color:var(--danger)">−</button>`
@@ -2341,12 +2363,14 @@ function initChrome() {
     DATA.teams.map(t => `<option value="${t.id}">${t.short}</option>`).join("");
 
   el("foot").innerHTML =
-    `<p style="margin:0 0 6px"><b>Model</b> xPts comes from the <code>${DATA.model}</code> baseline; ` +
-    `<b>FPL</b> xPts is the game's own figure. Ranking, sorting and auto-pick all follow whichever you select. ` +
-    `In the project's walk-forward backtest the FPL figure ordered players better within position ` +
-    `(Spearman 0.69 against 0.40), and the baseline is weakest of all in the opening weeks — with only ` +
-    `${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} played it reads cheap over-performers as elite. ` +
-    `It is here to be compared against, not trusted yet.</p>` +
+    `<p style="margin:0 0 6px"><b>Model</b> xPts comes from the <code>${DATA.model}</code> model — ` +
+    `gradient-boosted components for minutes, attack, defence and bonus, combined through the scoring rules. ` +
+    `<b>FPL</b> xPts is the game's own figure, and is also one of the model's inputs, so the model is that ` +
+    `forecast corrected rather than an independent second opinion. Ranking, sorting and auto-pick follow ` +
+    `whichever you select. On the 2024-25 walk-forward backtest the model ordered players better within ` +
+    `position (Spearman 0.695 against 0.665) and was closer on points (MAE 1.295 against 1.513). ` +
+    `With only ${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} of this season played, treat ` +
+    `the ordering as more trustworthy than the magnitudes.</p>` +
     `<p style="margin:0">GW${DATA.gameweek}, ${DATA.season}. Prices and fixtures captured ` +
     `${new Date(DATA.generatedAt).toLocaleDateString()} — rebuild with <code>python -m src.cli export-frontend</code> ` +
     `before each deadline. Your squad is saved in this browser only.</p>`;
@@ -2425,7 +2449,7 @@ el("availFilter").addEventListener("change", e => { filters.avail = e.target.val
 el("horizon").addEventListener("change", e => { horizon = Number(e.target.value); render(); });
 el("metric").addEventListener("change", e => {
   metric = e.target.value;
-  if (["ep", "epFpl", "ppg"].includes(sort.key)) sort = { key: metric === "form" ? "ep" : metric, dir: -1 };
+  if (["ep", "epFpl", "ppgw"].includes(sort.key)) sort = { key: metric === "form" ? "ep" : metric, dir: -1 };
   render();
 });
 el("copySquad").addEventListener("click", copySquad);
