@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ipynb_checkpoints/
+
+# Personal squad, bank and armbands (see config.local.yaml.example)
+config.local.yaml

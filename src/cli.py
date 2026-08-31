@@ -35,7 +35,7 @@ def _setup_logging(verbose: bool) -> None:
 
 
 def cmd_build_features(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config(args.config, use_local=not args.no_local)
     df, feature_cols = pipeline.build(config, include_current=not args.history_only)
     parquet_path, features_path = pipeline.save(df, feature_cols, config)
 
@@ -48,7 +48,7 @@ def cmd_build_features(args: argparse.Namespace) -> int:
 
 
 def cmd_backtest(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config(args.config, use_local=not args.no_local)
     if args.rebuild:
         df, feature_cols = pipeline.build(config)
         pipeline.save(df, feature_cols, config)
@@ -80,7 +80,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
 
 def cmd_predict(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
 
     gw = args.gw or client.next_gw()
@@ -125,7 +125,7 @@ def cmd_predict(args: argparse.Namespace) -> int:
 def cmd_export_frontend(args: argparse.Namespace) -> int:
     from . import frontend
 
-    config = load_config(args.config)
+    config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
     gw = args.gw or client.next_gw()
 
@@ -188,9 +188,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fpl", description=__doc__)
     parser.add_argument("--config", default=None, help="path to config.yaml")
     parser.add_argument("-v", "--verbose", action="store_true")
+
+    # Shared by every subcommand, so it can be typed after the subcommand.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--no-local",
+        action="store_true",
+        help="ignore config.local.yaml — how the copy of the page that gets "
+             "committed is built, so it ships without a personal squad in it",
+    )
+
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_build = sub.add_parser("build-features", help="pull data and build the feature frame")
+    p_build = sub.add_parser("build-features", parents=[common], help="pull data and build the feature frame")
     p_build.add_argument(
         "--history-only",
         action="store_true",
@@ -198,18 +208,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_build.set_defaults(func=cmd_build_features)
 
-    p_bt = sub.add_parser("backtest", help="walk-forward baseline backtest")
+    p_bt = sub.add_parser("backtest", parents=[common], help="walk-forward baseline backtest")
     p_bt.add_argument("--season", default=None, help="season to test (default: latest historical)")
     p_bt.add_argument("--rebuild", action="store_true", help="rebuild features first")
     p_bt.set_defaults(func=cmd_backtest)
 
-    p_pred = sub.add_parser("predict", help="expected points for the upcoming gameweek")
+    p_pred = sub.add_parser("predict", parents=[common], help="expected points for the upcoming gameweek")
     p_pred.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
     p_pred.add_argument("--model", default="minutes_x_pp90", help="predictor name")
     p_pred.add_argument("--top", type=int, default=25, help="rows to print")
     p_pred.set_defaults(func=cmd_predict)
 
-    p_front = sub.add_parser("export-frontend", help="build the squad-picker HTML page")
+    p_front = sub.add_parser("export-frontend", parents=[common], help="build the squad-picker HTML page")
     p_front.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
     p_front.add_argument("--model", default="minutes_x_pp90", help="predictor name")
     p_front.add_argument(

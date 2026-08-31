@@ -1,0 +1,29 @@
+# Copy to config.local.yaml. Gitignored — this file holds what is yours rather than the
+# project's, and is deep-merged over config.yaml at load time.
+#
+# Only include what you want to override; everything else falls through to
+# config.yaml. Use the page's "Copy squad" button to refresh `players` after
+# making transfers.
+squad:
+  players:
+    - haaland
+    - joao pedro
+    - gibbs-white
+    - ndiaye
+    - cherki
+    - szoboszlai
+    - mbeumo
+    - guehi
+    - calafiori
+    - pedro porro
+    - raya
+    - steele
+    - de cuyper
+    - herrington
+    - walle egell
+
+  captain: haaland
+  vice: mbeumo
+
+  bank: 0.4
+  free_transfers: 0

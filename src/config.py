@@ -111,8 +111,50 @@ class Config:
             d.mkdir(parents=True, exist_ok=True)
 
 
-def load_config(path: str | os.PathLike[str] | None = None) -> Config:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively overlay `override` on `base`, without mutating either.
+
+    Nested dictionaries merge key by key, so a local file can set just
+    `squad.bank` without having to restate the rest of the squad block.
+    Lists and scalars replace outright — a partial squad would be worse than
+    no squad.
+    """
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def local_config_path(base: Path) -> Path:
+    """`config.yaml` -> `config.local.yaml`, alongside it."""
+    return base.with_name(f"{base.stem}.local{base.suffix}")
+
+
+def load_config(
+    path: str | os.PathLike[str] | None = None, use_local: bool = True
+) -> Config:
+    """Load `config.yaml`, overlaid with `config.local.yaml` when present.
+
+    The local file is gitignored and holds whatever is yours rather than the
+    project's — your squad, your bank, your armbands. That keeps personal state
+    out of the repository while leaving the zero-argument workflow intact, and
+    means a fresh clone starts with an empty pitch instead of someone else's
+    team.
+
+    `use_local=False` ignores it, which is how the copy of the page that gets
+    committed is built.
+    """
     p = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     with open(p, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh)
+        raw = yaml.safe_load(fh) or {}
+
+    local = local_config_path(p)
+    if use_local and local.exists():
+        with open(local, "r", encoding="utf-8") as fh:
+            overrides = yaml.safe_load(fh) or {}
+        raw = _deep_merge(raw, overrides)
+
     return Config(raw=raw, path=p)

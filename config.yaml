@@ -44,46 +44,27 @@ features:
   # Minimum minutes in a fixture for it to count as an "appearance".
   appearance_minutes: 1
 
-# Your team. Set once here instead of passing --squad and --bank every time;
-# any CLI flag still overrides what is written here.
+# Your team lives in `config.local.yaml`, which is gitignored and deep-merged
+# over this file at load time. Copy `config.local.yaml.example` to start.
 #
-# This only seeds the page on a *first* visit. Once you have opened it, the
-# squad lives in your browser, so transfers you apply on the page survive a
-# rebuild and are not overwritten by this list. Use the page's "Copy squad"
-# button to bring it back in sync when you want to.
+# Left empty here on purpose: a fresh clone should open an empty pitch, not
+# whoever last pushed. Any CLI flag still overrides both files.
 squad:
   # Names are fuzzy-matched against the FPL player list and disambiguated by
   # squad shape, so surnames are usually enough. A comma-separated string works
   # here too, which is what "Copy squad" puts on your clipboard.
-  players:
-    - haaland
-    - joao pedro
-    - gibbs-white
-    - ndiaye
-    - cherki
-    - szoboszlai
-    - mbeumo
-    - guehi
-    - calafiori
-    - pedro porro
-    - raya
-    - steele
-    - de cuyper
-    - herrington
-    - walle egell
+  players: []
 
-  # Armbands. Carried across rebuilds so the auto-XI does not reassign them.
-  captain: haaland
-  vice: mbeumo
-
-  # Free transfers in hand. Only used when seeding a browser that has no saved
-  # squad — the page tracks this itself once you are using it. Set to 0 here
-  # because the GW3 transfers used the free one and took a -4 for the second.
-  free_transfers: 0
+  # Armbands, carried across rebuilds so the auto-XI does not reassign them.
+  captain: null
+  vice: null
 
   # Your actual bank, in millions. This cannot be derived from prices: it
   # depends on what you paid for your players, not what they cost now.
-  bank: 0.4
+  bank: null
+
+  # Free transfers in hand. Only used when seeding a browser with no saved squad.
+  free_transfers: null
 
   # Gameweeks of fixtures to load for the planning view.
   horizon: 5
