@@ -80,8 +80,16 @@ the list.
 
 ### Frontend
 
-Your squad, bank and horizon live in the `squad:` block of `config.yaml`, so the
-weekly command takes no arguments. `fpl.cmd` wraps the virtualenv, and `--open`
+Your squad, bank and armbands live in **`config.local.yaml`**, which is
+gitignored and deep-merged over `config.yaml` at load time — so personal state
+stays out of the repository and a fresh clone opens an empty pitch rather than
+someone else's team. Copy the example to start:
+
+```powershell
+copy config.local.yaml.example config.local.yaml
+```
+
+With that in place the weekly command takes no arguments. `fpl.cmd` wraps the virtualenv, and `--open`
 launches the page when it is built:
 
 ```powershell
@@ -104,10 +112,15 @@ so and asks to be rebuilt.
 
 **Transfers you apply on the page are not overwritten by a rebuild.** The page
 keeps your squad in browser storage and prefers it over the list in
-`config.yaml`, which only ever seeds a *first* visit. To push the other way —
+`config.local.yaml`, which only ever seeds a *first* visit. To push the other way —
 a fresh browser, cleared storage, a second machine — hit **Copy squad** on the
 page and paste the result into `squad.players`, which accepts that
 comma-separated form directly.
+
+The built page in the repo is generated with `--no-local`, so it ships without
+a squad baked in. Rebuilding normally puts *your* team in it, which will show as
+a modified file — regenerate with `fpl export-frontend --no-local` before
+committing if you would rather it stayed neutral.
 
 Every setting can still be overridden per run:
 
@@ -120,6 +133,7 @@ Every setting can still be overridden per run:
 | `--gw 4` | target a specific gameweek instead of the next one |
 | `--model` | which predictor supplies the model xPts column |
 | `--open` | open the page in your browser once built |
+| `--no-local` | ignore `config.local.yaml` — how the committed page is built |
 
 With no squad configured and no `--squad`, the page opens empty and you pick a
 squad by hand.
@@ -128,6 +142,7 @@ squad by hand.
 
 ```
 config.yaml               all settings: seasons, paths, API TTLs, windows
+config.local.yaml         your squad and bank (gitignored; see .example)
 src/
   config.py               config loading
   cli.py                  build-features / backtest / predict
@@ -156,7 +171,7 @@ src/
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
-tests/                    65 tests; leakage checks on synthetic and real data
+tests/                    72 tests; leakage checks on synthetic and real data
 data/                     parquet + API cache (gitignored)
 ```
 
@@ -220,6 +235,40 @@ the component stats — which also confirms the DEFCON reading: the API's
 `defensive_contribution` is the raw CBIT/CBIRT count, the thresholds are 10 for
 defenders and 12 for everyone else, and the award caps at +2 however far past the
 threshold a player goes.
+
+## What the transfer advice is calibrated on
+
+Two constants in the page drive every suggestion, and both were originally
+picked by hand. Both have since been measured against 2025-26.
+
+**Fixture difficulty.** Comparing every starter's points in a match against
+their own season average — within a player, so it is not just "good players get
+easy fixtures":
+
+| FDR | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| measured | 1.27 | 1.18 | 1.00 | 0.88 | 0.64 |
+
+A difficulty-5 fixture costs a starter about a third of their normal return.
+This is the single largest swing in the suggestions, and it is real.
+
+**How far to shrink current form toward a prior.** This one was wrong. The
+weight was set at 4 gameweeks on the reasoning that two games is too little to
+judge anyone on. Replaying the season and ranking players by a blend of
+season-to-date form and last season's record says the opposite — every increase
+in prior weight made the ordering worse:
+
+| prior weight | Spearman (predicting GW2–5) |
+|---|---|
+| form only | **0.574** |
+| 1 gameweek | 0.554 |
+| 4 gameweeks | 0.477 |
+| prior only | 0.245 |
+
+Recent form carries what last season cannot: whether a player is first choice
+right now, and whether the team plays through them. The weight is now 1 — nearly
+all of the ranking accuracy, while still damping magnitudes so a single 15-point
+haul is not projected across a horizon as though it were the norm.
 
 ## Backtest results
 

@@ -1146,8 +1146,16 @@ function attemptSwap(aId, bId) {
    be argued with, which is why every suggestion shows its reasoning.
    ===================================================================== */
 
-/** Fixture difficulty -> how much of a player's usual rate to expect. */
-const FDR_MULTIPLIER = { 1: 1.25, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
+/**
+ * Fixture difficulty -> how much of a player's usual rate to expect.
+ *
+ * Measured, not guessed: over 2025-26, comparing every starter's points in a
+ * match against their own season average, so the effect is within a player
+ * rather than "good players get easy fixtures". A difficulty-5 fixture costs a
+ * starter about a third of their normal return, and it is the single largest
+ * swing in these suggestions.
+ */
+const FDR_MULTIPLIER = { 1: 1.27, 2: 1.18, 3: 1.0, 4: 0.88, 5: 0.64 };
 
 /** A transfer has to clear this over the horizon before it is worth using the free one. */
 const WORTH_A_TRANSFER = 1.5;
@@ -1181,12 +1189,24 @@ function availability(p) {
 /**
  * How many gameweeks of evidence the prior is worth.
  *
- * With `DATA.gwsPlayed` gameweeks actually played, a player's own record gets
- * weight `gwsPlayed / (gwsPlayed + PRIOR_WEIGHT)`. Two games in, that is a third
- * — which is about right, and the balance shifts to the real record on its own
- * as the season goes on.
+ * This was 4, chosen by hand on the reasoning that two gameweeks is too little
+ * to judge anyone on. Measuring it said otherwise: replaying 2025-26 and ranking
+ * players by a blend of season-to-date form and last season's record, every
+ * increase in prior weight made the ordering *worse*, in every window tested.
+ *
+ *     prior weight    Spearman, predicting GW2-5
+ *     form only       0.574
+ *     1 gameweek      0.554
+ *     4 gameweeks     0.477   <- the old value
+ *     prior only      0.245
+ *
+ * Which makes sense in hindsight: recent form carries what last season cannot —
+ * the player's role right now, whether they are first choice, whether the team
+ * plays through them. A weight of 1 keeps almost all of that ranking accuracy
+ * while still damping the magnitudes, so one 15-point haul does not get
+ * projected across a whole horizon as though it were the norm.
  */
-const PRIOR_WEIGHT = 4;
+const PRIOR_WEIGHT = 1;
 
 /**
  * What a player at this price normally scores per gameweek. Interpolated
