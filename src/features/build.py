@@ -121,6 +121,14 @@ def _fixture_context_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]
     df["is_home"] = df["was_home"].astype(float)
     added.append("is_home")
 
+    # Set-piece duty. The order is a small integer or NA; first choice is the
+    # value that carries the goals and assists, so it gets its own flag.
+    for col, flag in (("penalties_order", "is_pen_taker"), ("setpiece_order", "is_setpiece_taker")):
+        order = pd.to_numeric(df[col], errors="coerce")
+        df[col] = order
+        df[flag] = (order == 1).astype(float)
+        added += [col, flag]
+
     return df, added
 
 
@@ -228,7 +236,9 @@ def build_features(
 
 def _assert_no_raw_outcomes(feature_cols: list[str]) -> None:
     """Cheap guard: a raw post-match column must never be named as a feature."""
-    banned = set(OUTCOME_COLS) | {TARGET}
+    # `chance_of_playing` is pre-deadline but has no history, so it is applied
+    # at prediction time rather than learned — it must never reach the model.
+    banned = set(OUTCOME_COLS) | {TARGET, "chance_of_playing"}
     leaked = sorted(banned.intersection(feature_cols))
     if leaked:
         raise ValueError(f"raw post-match columns used as features: {leaked}")

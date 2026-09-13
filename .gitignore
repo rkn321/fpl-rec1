@@ -7,3 +7,4 @@ __pycache__/
 
 # Personal squad, bank and armbands (see config.local.yaml.example)
 config.local.yaml
+data/snapshots/

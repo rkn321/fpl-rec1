@@ -1314,6 +1314,13 @@ function observedRate(p) {
  * and a keeper who happened to keep a clean sheet looks worth fifty points.
  */
 function rate(p) {
+  // The trained model already blends this season against history, and does it
+  // with a fitted model rather than a hand-picked weight. Shrinking its output
+  // again toward a price-and-last-season prior is double-counting: it drags a
+  // considered estimate back toward a cruder one. Only the raw signals — FPL's
+  // figure, season-so-far, recent form — need the prior.
+  if (metric === "ep") return observedRate(p);
+
   const played = Math.max(0, DATA.gwsPlayed || 0);
   return (observedRate(p) * played + priorRate(p) * PRIOR_WEIGHT) / (played + PRIOR_WEIGHT);
 }

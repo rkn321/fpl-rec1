@@ -57,6 +57,18 @@ class MinutesModel:
         # fitted independently and can disagree at the margins.
         p_60 = np.minimum(p_60, p_play)
 
+        # FPL's availability flag is team news the feature frame cannot see —
+        # it comes from the press conference, not from last week's minutes. The
+        # model has no history of it to learn from, so it is applied as a
+        # ceiling: a player FPL puts at 25% cannot be given a 90% chance of
+        # playing by a model that only knows he started last month. Unflagged
+        # players (NA) are left to the model.
+        if "chance_of_playing" in test.columns:
+            flag = pd.to_numeric(test["chance_of_playing"], errors="coerce").to_numpy(dtype=float)
+            ceiling = np.where(np.isnan(flag), 1.0, np.clip(flag / 100.0, 0.0, 1.0))
+            p_play = np.minimum(p_play, ceiling)
+            p_60 = np.minimum(p_60, ceiling)
+
         conditional = np.clip(self.minutes_if_played.predict(test), 0.0, 90.0)
         expected = p_play * conditional
 

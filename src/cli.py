@@ -4,6 +4,7 @@
     python -m src.cli backtest          # walk-forward baselines
     python -m src.cli predict           # expected points for the next gameweek
     python -m src.cli export-frontend   # build the squad / transfer page
+    python -m src.cli snapshot          # capture live inputs before a deadline
 
 There is no server. `export-frontend` writes one self-contained HTML file with
 the player pool baked into it, and the page does the rest in the browser — so
@@ -185,6 +186,53 @@ def cmd_export_frontend(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    """Store bootstrap-static as it stands right now, keyed by gameweek.
+
+    The model's most valuable inputs — FPL's expected points, the availability
+    flag, set-piece orders — are only ever *current* in the API. Their history
+    in the vaastav dataset is patchy and only probably pre-deadline. Run this
+    before each deadline and next season trains on data that is pre-deadline by
+    construction, with none of the "was this scraped after the match" doubt.
+
+    Idempotent per gameweek: rerunning before the same deadline overwrites.
+    """
+    import json
+
+    config = load_config(args.config, use_local=not args.no_local)
+    client = FPLClient(config)
+    payload = client.bootstrap_static(force=True)
+    gw = args.gw or client.next_gw()
+    if gw is None:
+        print("no upcoming gameweek to snapshot", file=sys.stderr)
+        return 1
+
+    out_dir = config.data_dir / "snapshots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = pd.Timestamp.now(tz="UTC")
+    path = out_dir / f"bootstrap_gw{gw:02d}.json"
+
+    # Keep only the per-player fields the model can use, plus enough to join.
+    keep = [
+        "id", "web_name", "team", "element_type", "now_cost", "ep_next", "ep_this",
+        "chance_of_playing_next_round", "chance_of_playing_this_round", "status", "news",
+        "penalties_order", "corners_and_indirect_freekicks_order", "form",
+        "selected_by_percent", "transfers_in_event", "transfers_out_event",
+    ]
+    players = [{k: p.get(k) for k in keep} for p in payload["elements"]]
+    path.write_text(
+        json.dumps({"gameweek": gw, "captured_at": stamp.isoformat(), "players": players}),
+        encoding="utf-8",
+    )
+    flagged = sum(1 for p in players if p["chance_of_playing_next_round"] is not None)
+    print(f"gameweek  : {gw}")
+    print(f"captured  : {stamp.strftime('%a %d %b %H:%M UTC')}")
+    print(f"players   : {len(players)}  ({flagged} carrying an availability flag)")
+    print(f"written   : {path}")
+    print("\nRun this before every deadline. A scheduled task on Friday afternoons works.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fpl", description=__doc__)
     parser.add_argument("--config", default=None, help="path to config.yaml")
@@ -255,6 +303,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_front.add_argument("--output", default=None, help="output path")
     p_front.set_defaults(func=cmd_export_frontend)
+
+    p_snap = sub.add_parser(
+        "snapshot", parents=[common],
+        help="store the live player data for this gameweek, so next season trains on clean inputs",
+    )
+    p_snap.add_argument("--gw", type=int, default=None, help="gameweek to label it (default: next)")
+    p_snap.set_defaults(func=cmd_snapshot)
 
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)

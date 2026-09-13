@@ -18,9 +18,9 @@ defence and bonus, combined through the scoring rules. Phase 4 (Understat xG,
 odds, the injury and lineup feed) and Phase 5 (the optimiser) are scaffolded with
 design notes and not yet implemented.
 
-The component model beats every baseline on MAE and beats the naive baselines on
-ranking, but is still behind FPL's own expected points at ordering players — see
-[what this does and does not clear](#what-this-does-and-does-not-clear).
+The component model beats every baseline, including FPL's own expected points,
+on both MAE and within-position ranking — with an asterisk, since FPL's figure
+is also one of its inputs. See [what this clears](#what-this-clears-and-the-asterisk-on-it).
 
 On top of that sits a self-contained transfer tool — see
 [Frontend](#frontend) — which scores every legal swap by its effect on your
@@ -82,6 +82,18 @@ under `data/cache/`, so later runs are fast.
 
 `predict` writes `data/processed/expected_points_gw{N}.csv` and prints the top of
 the list.
+
+### Before each deadline
+
+```powershell
+.\fpl snapshot
+```
+
+Stores the live player data — FPL's expected points, availability flags,
+set-piece orders — labelled by gameweek under `data/snapshots/`. These inputs
+are only ever *current* in the API; capturing them before each deadline is what
+makes them trainable next season without the "was this scraped after the match"
+doubt. A Friday-afternoon scheduled task is the natural home for it.
 
 ### Frontend
 
@@ -336,6 +348,31 @@ never a modelling failure: FPL's figure is computed with **team news** — press
 conferences, predicted lineups, injury flags — and nothing in the lagged feature
 frame reconstructs a team sheet. Minutes are the make-or-break input (brief
 §6.3) and the lineup feed is the hardest thing to source (§3.6).
+
+### Team news, applied rather than learned
+
+Two of the inputs the roadmap ranked highest have no per-gameweek history —
+they exist only as end-of-season snapshots or not at all — so they cannot be
+trained on. They are used anyway, in the two ways that are honest about that:
+
+**Set-piece duty** (`penalties_order`, `corners_and_indirect_freekicks_order`)
+is stable enough within a season that the season snapshot is a fair training
+proxy, so it is a feature. First-choice penalty takers scored 0.359 goals per 90
+in 2025-26 against 0.105 for everyone else. And yet: **on the 2024-25 backtest
+it moved nothing** — MAE 1.2945 to 1.2967, Spearman 0.6946 to 0.6936, inside
+noise. The likely reason is that `xP` already encodes penalty duty, because FPL
+knows who takes them. Kept as a hedge for the gameweeks where `xP` is missing;
+not claimed as a gain.
+
+**Availability** (`chance_of_playing_next_round`) has no history at all, so it
+is applied as a *ceiling* on the minutes prediction for the gameweek being
+predicted rather than fed to the model. A player FPL puts at 25% cannot be given
+a 90% chance of playing by a model that only knows he started last month. On the
+GW5 predictions this changed 139 of 258 flagged players; Dean Henderson went
+from 52% (recent minutes) to 0% (injured), and from 1.9 expected points to 0.
+
+`fpl snapshot` stores the live player data before a deadline, so that next
+season these inputs can be trained on properly rather than approximated.
 
 ### The residual doubt
 
