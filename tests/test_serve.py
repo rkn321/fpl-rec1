@@ -225,3 +225,75 @@ def test_static_files_are_still_served(server):
         assert res.status == 200
         assert b"hi" in res.read()
         assert res.headers["Cache-Control"] == "no-store"
+
+
+# -- live points ------------------------------------------------------------------
+
+class FakeClient:
+    """Stands in for FPLClient: answers the two live endpoints from canned data."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, path, *, ttl=None, force=False):
+        self.calls.append((path, ttl))
+        if path.startswith("event/"):
+            return {"elements": [
+                {"id": 1, "stats": {"total_points": 9, "minutes": 90}},
+                {"id": 2, "stats": {"total_points": 0, "minutes": 0}},
+                {"id": 3, "stats": {}},                       # no stats yet
+            ]}
+        if path.startswith("fixtures/"):
+            return [
+                {"team_h": 10, "team_a": 11, "started": True, "finished": True, "minutes": 90, "kickoff_time": "k1"},
+                {"team_h": 12, "team_a": 13, "started": True, "finished": False, "finished_provisional": False, "minutes": 55, "kickoff_time": "k2"},
+                {"team_h": 14, "team_a": 15, "started": False, "finished": False, "minutes": 0, "kickoff_time": "k3"},
+                {"team_h": None, "team_a": 16},                # not yet scheduled: skipped
+            ]
+        raise AssertionError(path)
+
+
+def test_live_points_shapes_the_feed_and_caches_briefly():
+    client = FakeClient()
+    out = serve.live_points(client, 5)
+    assert out["ok"] is True and out["gw"] == 5
+    assert out["points"] == {"1": [9, 90], "2": [0, 0], "3": [0, 0]}
+    assert [m["finished"] for m in out["fixtures"]] == [True, False, False]
+    assert [m["started"] for m in out["fixtures"]] == [True, True, False]
+    assert len(out["fixtures"]) == 3                       # the unscheduled one is dropped
+    # Both calls go through the client's cache with the short live TTL.
+    assert all(ttl == serve.LIVE_TTL for _, ttl in client.calls)
+
+
+def test_live_endpoint_serves_points_and_validates_gw(server):
+    serve._Handler.client = FakeClient()
+    try:
+        status, out = _get(f"{server}/api/live?gw=5")
+        assert status == 200 and out["ok"] is True and out["points"]["1"] == [9, 90]
+
+        for bad in ("gw=0", "gw=39", "gw=abc", ""):
+            req = urllib.request.Request(f"{server}/api/live?{bad}")
+            try:
+                urllib.request.urlopen(req, timeout=5)
+                assert False, f"expected 400 for {bad!r}"
+            except urllib.error.HTTPError as err:
+                assert err.code == 400
+    finally:
+        serve._Handler.client = None
+
+
+def test_live_endpoint_reports_an_unreachable_api_as_502(server):
+    class Down:
+        def get(self, path, *, ttl=None, force=False):
+            raise RuntimeError("no network")
+    serve._Handler.client = Down()
+    try:
+        req = urllib.request.Request(f"{server}/api/live?gw=5")
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            assert False, "expected 502"
+        except urllib.error.HTTPError as err:
+            assert err.code == 502
+            assert json.loads(err.read())["ok"] is False
+    finally:
+        serve._Handler.client = None

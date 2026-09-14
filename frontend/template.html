@@ -309,6 +309,16 @@ main {
 .card .figs .ep { color: var(--accent); font-weight: 600; }
 
 .card .fix { font-size: 10px; color: var(--ink-faint); font-family: var(--font-mono); }
+/* Points scored so far this gameweek, once the player's match is under way.
+   Sits between price and xPts in the figures row, so it never covers the name. */
+.card .figs .lp {
+  font-weight: 700; line-height: 1; padding: 2px 5px; border-radius: 7px; white-space: nowrap;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--line-strong);
+}
+.card .lp.live { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.card .lp.live::after { content: "●"; margin-left: 4px; font-size: 8px; animation: lp-pulse 1.4s ease-in-out infinite; }
+.card .lp.dnp { color: var(--ink-faint); border-style: dashed; }
+@keyframes lp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 
 /* Position colour-coding on the card's top edge, so shape reads at a glance. */
 .card::before {
@@ -2310,6 +2320,72 @@ function resetAll() {
 }
 
 /* =====================================================================
+   Live points — only when served by `fpl serve`
+
+   During a gameweek, each player's card shows the points he has scored so
+   far once his match is under way, and the ledger keeps a running total for
+   the XI. The gameweek shown is the one most recently past its deadline —
+   in play over the weekend, final by the time the next deadline comes round.
+   A browser cannot ask FPL for this itself, so the helper fetches it.
+   ===================================================================== */
+let live = null;   // { gw, points: {id: [pts, mins]}, byTeam: {teamId: status} }
+
+/** The gameweek being played (or just finished): the last one past its deadline. */
+const liveGw = () => currentGw() - 1;
+
+async function loadLive() {
+  if (!SERVER || liveGw() < 1) return;
+  try {
+    const res = await fetch(`/api/live?gw=${liveGw()}`, { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) return;
+    // A club's match state, from its fixtures that week (two in a double).
+    const byTeam = {};
+    for (const f of data.fixtures) {
+      for (const t of [f.h, f.a]) {
+        const cur = byTeam[t] || { started: 0, finished: 0, total: 0 };
+        cur.total++; if (f.started) cur.started++; if (f.finished) cur.finished++;
+        byTeam[t] = cur;
+      }
+    }
+    const status = {};
+    for (const [t, c] of Object.entries(byTeam)) {
+      status[t] = c.total && c.finished === c.total ? "final" : c.started ? "live" : "upcoming";
+    }
+    live = { gw: data.gw, points: data.points, byTeam: status };
+    renderPitch();
+    renderLedger();
+  } catch (e) { /* helper not there, or FPL not answering: the page simply shows no points */ }
+}
+
+/** Points so far for a player, or null if his match has not kicked off. */
+function livePointsFor(id) {
+  if (!live) return null;
+  const p = byId.get(id);
+  const status = live.byTeam[String(p.teamId)] || "upcoming";
+  if (status === "upcoming") return null;
+  const [pts, mins] = live.points[String(id)] || [0, 0];
+  return { pts, mins, status };
+}
+
+/** The XI's running total, captain doubled (tripled under a Triple Captain). */
+function liveTotal() {
+  if (!live) return null;
+  const played = state.history.find(h => h.gw === live.gw);
+  const chip = played ? played.chip : null;
+  const capMult = chip === "3xc" ? 3 : 2;
+  const counted = chip === "bboost" ? state.picks : starters();
+  let total = 0, seen = 0;
+  for (const p of counted) {
+    const lp = livePointsFor(p.id);
+    if (!lp) continue;
+    seen++;
+    total += lp.pts * (p.id === state.captain ? capMult : 1);
+  }
+  return { total, seen, of: counted.length, final: counted.every(p => (livePointsFor(p.id) || {}).status === "final") };
+}
+
+/* =====================================================================
    Saving to config.local.yaml — only when served by `fpl serve`
    ===================================================================== */
 /**
@@ -2440,9 +2516,18 @@ function renderLedger() {
     { k: "Points hit", v: hit ? `−${hit}` : "0", cls: hit ? "is-danger" : "" },
     { k: "Chip", v: chip ? chip.name : "—", cls: chip ? "is-good" : "" },
   ];
+  const lt = liveTotal();
+  if (lt && lt.seen) {
+    stats.push({
+      k: lt.final ? `GW${live.gw} final` : `GW${live.gw} so far`,
+      v: `${lt.total}`,
+      cls: lt.final ? "" : "is-good",
+      title: `${lt.seen} of ${lt.of} have played — captain counted double`,
+    });
+  }
 
   el("ledger").innerHTML = stats.map(s =>
-    `<div class="stat ${s.cls || ""}"><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`
+    `<div class="stat ${s.cls || ""}"${s.title ? ` title="${s.title}"` : ""}><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`
   ).join("");
 }
 
@@ -2480,8 +2565,18 @@ function cardHTML(pick) {
     <div class="nm">${p.name}${flag}</div>
     <div class="meta"><span>${p.team}</span><span>${p.pos}</span></div>
     <div class="fix">${fixtureText(p)}</div>
-    <div class="figs"><span>£${money(p.price)}</span><span class="ep">${epOf(p).toFixed(1)}</span></div>
+    <div class="figs"><span>£${money(p.price)}</span>${livePill(pick.id)}<span class="ep">${epOf(p).toFixed(1)}</span></div>
   </div>`;
+}
+
+function livePill(id) {
+  const lp = livePointsFor(id);
+  if (!lp) return "";
+  const dnp = lp.status === "final" && lp.mins === 0;
+  const cls = dnp ? "dnp" : lp.status;
+  const title = dnp ? `GW${live.gw}: did not play`
+    : `GW${live.gw}: ${lp.pts} point${lp.pts === 1 ? "" : "s"} so far, ${lp.mins} min${lp.status === "live" ? " — match in progress" : ""}`;
+  return `<span class="lp ${cls}" title="${title}">${lp.pts}</span>`;
 }
 
 function slotHTML(pos) {
@@ -3039,6 +3134,8 @@ if (adoptedNewerBuild) {
   flash("This page was rebuilt with a different squad — updated to match your latest team and bank.");
 }
 loadConfig();   // shows the save strip when a local helper is behind the page
+loadLive();     // points so far this gameweek, when the helper can fetch them
+setInterval(loadLive, 60_000);
 
 // A page left open over a Friday evening should not still be showing last
 // week. Cheap enough to poll: it only does work when the gameweek changes.

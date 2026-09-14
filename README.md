@@ -252,6 +252,15 @@ forward. What a rebuild *is* still needed for is the data: prices, projections
 and fixtures are stamped at build time, so once a deadline passes the page says
 so and asks to be rebuilt.
 
+**Live points.** During a gameweek each card shows the points its player has
+scored so far, once his match is under way — a running total for the XI sits
+in the ledger, captain doubled. Players whose match has not kicked off show
+nothing; a bench player whose match is over without him getting on shows a
+dashed 0. The gameweek shown is the one most recently past its deadline: in
+play over the weekend, final by the time the next deadline arrives. A browser
+cannot ask FPL for this itself, so it comes through the `fpl serve` helper,
+refreshed every minute — opened as a plain file the page simply omits it.
+
 **Chip timing.** Under the chip bar the page says when to play each chip, from
 the same projections taken one gameweek at a time — a double gameweek is where
 Triple Captain and Bench Boost pay, a blank is where a Free Hit does. Each chip

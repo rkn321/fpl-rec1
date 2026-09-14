@@ -6,6 +6,9 @@ paste by hand. Served from here instead, the page gets two small endpoints:
 
     GET  /api/config   is there a config.local.yaml, and what is in it?
     POST /api/config   write the squad, armbands, bank and free transfers to it
+    GET  /api/live     points scored so far in a gameweek, and which matches
+                       have been played — a browser cannot ask FPL for this
+                       itself (CORS), so the helper does, cached for a minute
 
 Whether the local file *exists* is what the page uses to decide it is someone's
 first visit: absent, it asks them to pick a team and set a bank; present, they
@@ -20,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import webbrowser
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -29,8 +33,14 @@ from typing import Any
 import yaml
 
 from .config import Config, local_config_path
+from .data.fpl_api import FPLClient
 
 log = logging.getLogger(__name__)
+
+# How long a live-points answer is reused before FPL is asked again. Scores
+# move by the minute during a match; a poll every minute is plenty, and this
+# keeps a page left open from hammering the API.
+LIVE_TTL = 60
 
 DEFAULT_PORT = 8765
 HOST = "127.0.0.1"
@@ -136,10 +146,41 @@ def write_local(config: Config, payload: Any) -> Path:
     return path
 
 
+def live_points(client: FPLClient, gw: int) -> dict[str, Any]:
+    """Points so far this gameweek per player, plus the state of every match.
+
+    Two calls: the live feed gives each player's running total and minutes;
+    the fixture list says whether each match has started or finished, which
+    is what tells "0 points, match over" from "0 points, not kicked off".
+    """
+    live = client.get(f"event/{gw}/live/", ttl=LIVE_TTL) or {}
+    fixtures = client.get(f"fixtures/?event={gw}", ttl=LIVE_TTL) or []
+
+    points: dict[str, list[int]] = {}
+    for element in live.get("elements", []):
+        stats = element.get("stats") or {}
+        points[str(element["id"])] = [int(stats.get("total_points") or 0), int(stats.get("minutes") or 0)]
+
+    matches = [
+        {
+            "h": int(f["team_h"]),
+            "a": int(f["team_a"]),
+            "started": bool(f.get("started")),
+            "finished": bool(f.get("finished") or f.get("finished_provisional")),
+            "minutes": int(f.get("minutes") or 0),
+            "kickoff": f.get("kickoff_time"),
+        }
+        for f in fixtures
+        if f.get("team_h") is not None and f.get("team_a") is not None
+    ]
+    return {"ok": True, "gw": gw, "fetchedAt": time.time(), "points": points, "fixtures": matches}
+
+
 class _Handler(SimpleHTTPRequestHandler):
     """Static files from the frontend directory, plus the two config endpoints."""
 
     config: Config  # bound onto the class by serve()
+    client: FPLClient | None = None  # likewise; None until serve() runs
 
     # The page is UTF-8 (pound signs, dashes); say so, or a browser fed a bare
     # `text/html` over HTTP guesses Latin-1 and renders "£" as "Â£".
@@ -160,10 +201,31 @@ class _Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802 - http.server's naming
-        if self.path.split("?", 1)[0] == "/api/config":
+        route, _, query = self.path.partition("?")
+        if route == "/api/config":
             self._json(200, read_local(self.config))
             return
+        if route == "/api/live":
+            self._live(query)
+            return
         super().do_GET()
+
+    def _live(self, query: str) -> None:
+        params = dict(part.split("=", 1) for part in query.split("&") if "=" in part)
+        try:
+            gw = int(params.get("gw", ""))
+        except ValueError:
+            self._json(400, {"ok": False, "error": "gw must be a gameweek number"})
+            return
+        if not 1 <= gw <= 38:
+            self._json(400, {"ok": False, "error": "gw must be between 1 and 38"})
+            return
+        client = self.client or FPLClient(self.config)
+        try:
+            self._json(200, live_points(client, gw))
+        except Exception as exc:  # noqa: BLE001 - the page shows "unavailable", not a traceback
+            log.warning("live points for GW%d unavailable: %s", gw, exc)
+            self._json(502, {"ok": False, "error": "FPL did not answer"})
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] != "/api/config":
@@ -199,6 +261,7 @@ def serve(
     # http.server instantiates the handler per request, so the config rides on
     # the class rather than on an instance we never get to construct.
     _Handler.config = config
+    _Handler.client = FPLClient(config)
     handler = partial(_Handler, directory=str(directory))
 
     server = ThreadingHTTPServer((HOST, port), handler)
