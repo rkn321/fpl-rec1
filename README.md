@@ -252,6 +252,19 @@ forward. What a rebuild *is* still needed for is the data: prices, projections
 and fixtures are stamped at build time, so once a deadline passes the page says
 so and asks to be rebuilt.
 
+**Chip timing.** Under the chip bar the page says when to play each chip, from
+the same projections taken one gameweek at a time — a double gameweek is where
+Triple Captain and Bench Boost pay, a blank is where a Free Hit does. Each chip
+gets its best week, the number behind it, and the reason: Triple Captain is the
+extra ×1 of your best starter; Bench Boost is what your bench would score; Free
+Hit only fires for a week whose *shape* demands it (a blank that empties your
+XI, or a widespread double), never for an ordinary week's paper gain; and the
+Wildcard is valued against what one free transfer a week would reach anyway,
+so its figure is what doing the whole rebuild *now* is worth, not the gap to a
+perfect squad. Players with fewer than 90 minutes this season are kept out of
+any "best squad" — no evidence, no place in a dream team. A set-one chip
+unused near the GW19 deadline is flagged as use-it-or-lose-it.
+
 **A rebuild picks up whatever is in `config.local.yaml`.** The page keeps your
 working squad in browser storage between visits, and a rebuild whose team, bank
 or free transfers differ from what the browser last saw adopts the new ones —
@@ -517,6 +530,51 @@ and some of that could be knowledge rather than forecasting. The way to settle
 it is to snapshot `bootstrap-static`'s `ep_next` before each deadline from here
 on, building a training set that is provably pre-deadline, and re-run this
 comparison against it.
+
+### Measured and not adopted
+
+Three plausible improvements, each tested on the walk-forward harness before
+being believed. The current model won all three, so they are recorded here to
+save re-trying them.
+
+**Scoring rates from xG only, with points and FPL's `xP` removed.** The
+motivation was real: four gameweeks in, a £5.6m midfielder on a hot streak and
+Haaland were predicted the same goals despite a threefold gap in xG per game,
+because `xP` — which early in a season is simply FPL's recent-points average —
+was the goals model's largest input. Removing points and `xP` from the goal and
+assist rate models fixed that pair exactly as intended, and made the model
+worse everywhere else:
+
+| | MAE, recent-minutes players | Spearman within position | Actual points of the model's top XI |
+|---|---|---|---|
+| cold start, 2025-26 GW2–6 — current | **1.210** | **0.764** | **10.4** |
+| cold start — xG-only rates | 1.463 | 0.708 | 9.7 |
+| full season, 2024-25 — current | **1.297** | **0.694** | **9.5** |
+| full season — xG-only rates | 1.432 | 0.666 | 8.6 |
+
+Worse in every gameweek including GW2, and an ensemble of the two only lands in
+between. Part of the reason is that xG is no longer the only route to points:
+a midfielder with 0.09 xGI per 90 was rated 6.6 because he collects defensive
+contributions, and the model was right about him. The Groß/Haaland compression
+at the very top is real but is a magnitude issue, not a ranking one, and every
+hand fix cost more than it recovered.
+
+**A last-season points prior.** Rejected before testing, on the grounds that a
+player whose situation has changed — a new club, a first-choice role — is
+exactly who it would misrate.
+
+**Opponent form instead of static fixture difficulty.** The intuition was that a
+big club in a slump is an easier fixture than its rating says. Across two
+seasons of player-matches, an opponent's recent form does carry a signal on its
+own (leaky recent defences lift a player's points by about 11%, tight ones cut
+them 10%) — but that signal is entirely explained by its correlation with the
+static rating. Within a difficulty bucket, splitting opponents by their form
+moves the outcome by zero: 5-week, 10-week and season-to-date windows, by xG
+conceded or by points, all give mean gaps between −0.03 and +0.01. The reverse
+does not hold — within a form band, static difficulty still separates 1.22 from
+0.82 — so the rating carries information form does not, and FPL's own revisions
+already fold in whatever form matters. The page keeps the measured difficulty
+multipliers.
 
 ## Running the tests
 

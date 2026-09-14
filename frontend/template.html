@@ -505,6 +505,38 @@ main {
   color: var(--ink-faint);
 }
 
+/* ------------------------------------------------------------ chip advice */
+.chipadvice { padding: 4px 14px 12px; }
+.chipadvice .lbl {
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-faint); margin: 6px 0 7px;
+}
+.chipadvice .now { font-size: 13px; margin-bottom: 6px; line-height: 1.45; }
+.chipadvice .now b.go { color: var(--good); }
+.chipadvice .now b.hold { color: var(--warn); }
+.chipadvice .now .sel { color: var(--ink-faint); }
+.chipadvice .row {
+  display: grid; grid-template-columns: 104px 86px 1fr; gap: 4px 10px; align-items: baseline;
+  padding: 7px 0; border-top: 1px solid var(--line);
+  font-size: 12px; line-height: 1.45;
+}
+.chipadvice .row .name { font-weight: 600; }
+.chipadvice .row .why { color: var(--ink-muted); }
+.chipadvice .badge {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 5px; text-align: center; white-space: nowrap;
+}
+.chipadvice .badge.play { color: var(--good); background: var(--good-bg); }
+.chipadvice .badge.hold { color: var(--warn); background: var(--warn-bg); }
+.chipadvice .badge.expiring { color: var(--danger); background: var(--danger-bg); }
+.chipadvice .badge.played { color: var(--ink-faint); background: var(--surface-2); text-decoration: line-through; }
+.chipadvice .note { font-size: 11px; color: var(--ink-faint); margin-top: 8px; }
+.chipadvice .empty { font-size: 12px; color: var(--ink-faint); }
+@media (max-width: 560px) {
+  .chipadvice .row { grid-template-columns: 1fr auto; }
+  .chipadvice .row .why { grid-column: 1 / -1; }
+}
+
 /* ------------------------------------------------------------------- pool */
 .filters { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
 
@@ -633,6 +665,7 @@ tbody tr.is-owned:hover { background: var(--accent-soft); filter: brightness(.97
     </div>
 
     <div class="chipbar" id="chipbar"></div>
+    <div class="chipadvice" id="chipAdvice"></div>
 
     <div class="panel-head" style="border-top:1px solid var(--line); border-bottom:none;">
       <h2 style="font-size:15px;">Lock in your team</h2>
@@ -1747,16 +1780,22 @@ function applyBestXI() {
 
 const MIN_PRICE = 40;   // no player costs less than £4.0m
 
-function squadScore(list) {
-  const xi = bestXI(list.map(p => ({ id: p.id })));
+function squadScore(list, worth) {
+  const xi = bestXI(list.map(p => ({ id: p.id })), worth);
   return xi ? xi.ep : -1;
 }
 
-/** Fill 15 places greedily, scoring players on points minus a price penalty. */
-function greedyBuild(lambda) {
+/**
+ * Fill 15 places greedily, scoring players on points minus a price penalty.
+ *
+ * `worth` is what a player is valued on — raw rate for the draft, or a
+ * fixture-weighted figure for a particular gameweek when the chip advice asks
+ * what a one-week squad could do. `budget` is what there is to spend.
+ */
+function greedyBuild(lambda, worth = epOf, budget = RULES.budget) {
   const ranked = DATA.players
-    .filter(p => p.status === "available" && epOf(p) > 0)
-    .map(p => ({ p, score: epOf(p) - lambda * p.price }))
+    .filter(p => p.status === "available" && worth(p) > 0)
+    .map(p => ({ p, score: worth(p) - lambda * p.price }))
     .sort((a, b) => b.score - a.score);
 
   const chosen = [];
@@ -1769,7 +1808,7 @@ function greedyBuild(lambda) {
     if ((clubs.get(p.teamId) || 0) >= RULES.maxPerClub) continue;
     // Keep enough back that the remaining places can still be filled.
     const remaining = RULES.squadSize - chosen.length - 1;
-    if (spend + p.price > RULES.budget - remaining * MIN_PRICE) continue;
+    if (spend + p.price > budget - remaining * MIN_PRICE) continue;
     chosen.push(p);
     need[p.pos] -= 1;
     clubs.set(p.teamId, (clubs.get(p.teamId) || 0) + 1);
@@ -1777,7 +1816,7 @@ function greedyBuild(lambda) {
     if (chosen.length === RULES.squadSize) break;
   }
 
-  return chosen.length === RULES.squadSize && spend <= RULES.budget ? chosen : null;
+  return chosen.length === RULES.squadSize && spend <= budget ? chosen : null;
 }
 
 /**
@@ -1856,6 +1895,293 @@ function autoPickSquad() {
   state.picks = squad.map(p => ({ id: p.id, buyPrice: p.price, starting: false, benchRank: null }));
   applyBestXI();
   flash(`Picked 15 for £${money(spend)}m — £${money(RULES.budget - spend)}m left in the bank.`);
+}
+
+/* =====================================================================
+   Chip timing — when to play the Wildcard, Free Hit, Triple Captain and
+   Bench Boost.
+
+   The same projections as the transfer advice, taken one gameweek at a time
+   rather than summed over the horizon, because chip timing is *about* the
+   individual weeks: a double gameweek is where Triple Captain and Bench
+   Boost pay, a blank is where a Free Hit does, and a Wildcard is judged on
+   how far the squad is from the best one available over the weeks ahead.
+
+   Each chip is valued at what it would add in every week the page has
+   fixtures for, and the advice is the best of those weeks with the number
+   behind it. The thresholds are plain heuristics, shown rather than hidden.
+   ===================================================================== */
+
+/** Expected points in one gameweek: rate x availability x that week's fixtures. */
+function gwScore(p, gw) {
+  let weight = 0;
+  for (const f of p.fixtures) if (f.gw === gw) weight += FDR_MULTIPLIER[f.difficulty] ?? 1;
+  return rate(p) * availability(p) * weight;
+}
+
+/** A value function usable by both the squad builder (objects) and bestXI (ids). */
+const worthIn = gw => x => gwScore(typeof x === "object" ? x : byId.get(x), gw);
+const worthOver = gws => x => {
+  const p = typeof x === "object" ? x : byId.get(x);
+  return gws.reduce((t, gw) => t + gwScore(p, gw), 0);
+};
+
+/**
+ * The weeks chip advice can see: from now to the last gameweek with fixtures
+ * baked in, and never past the end of the current chip set — a set-one chip
+ * unused at the GW19 deadline is gone.
+ */
+function chipLookahead() {
+  const first = currentGw();
+  let last = first;
+  for (const p of DATA.players) for (const f of p.fixtures) if (f.gw > last) last = f.gw;
+  const halfEnd = chipSet(first) === 1 ? RULES.firstHalfLastGw : RULES.lastGw;
+  last = Math.min(last, halfEnd);
+  return Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => first + i);
+}
+
+/** One club's fixture list, taken from any of its players (they all share it). */
+const clubFixtures = new Map();
+for (const p of DATA.players) if (!clubFixtures.has(p.teamId)) clubFixtures.set(p.teamId, p.fixtures);
+
+/** How many clubs play twice, and how many not at all, in a gameweek. */
+function gwShape(gw) {
+  let doubles = 0, blanks = 0;
+  for (const fixtures of clubFixtures.values()) {
+    const n = fixtures.filter(f => f.gw === gw).length;
+    if (n >= 2) doubles++;
+    if (n === 0) blanks++;
+  }
+  return { doubles, blanks };
+}
+
+/**
+ * Minutes a player needs this season before a chip may build a squad around
+ * him. A player with no minutes has no evidence behind his figure — it comes
+ * from his price and FPL's form number alone — and the Free Hit and Wildcard
+ * *maximise* over the pool, so every unassessable player with a flattering
+ * guess floats straight to the top. One full match is the bar.
+ */
+const MIN_POOL_MINUTES = 90;
+const evidenced = worth => x => {
+  const p = typeof x === "object" ? x : byId.get(x);
+  return p.minutes >= MIN_POOL_MINUTES ? worth(p) : 0;
+};
+
+/** The best XI a one-off squad from the whole pool could field, on this value. */
+function bestPoolXI(worth, budget) {
+  const w = evidenced(worth);
+  let best = null;
+  // A coarser price-penalty sweep than the draft uses: this runs once per week.
+  for (let lambda = 0; lambda <= 0.6; lambda += 0.05) {
+    const squad = greedyBuild(lambda, w, budget);
+    if (!squad) continue;
+    const xi = bestXI(squad.map(p => ({ id: p.id })), w);
+    if (xi && (!best || xi.ep > best.ep)) best = xi;
+  }
+  return best;
+}
+
+/**
+ * What your squad could reach with ordinary transfers: up to `maxSwaps`
+ * one-for-one swaps, each the single change that lifts the best XI most,
+ * within the bank and the club limit, made one a week. This is the honest
+ * baseline for a Wildcard — its value is only what is left *after* the
+ * transfers you would have made anyway, not the whole gap to a perfect squad.
+ */
+function reachableBySwaps(picks, worth, bankNow, maxSwaps, weeks) {
+  const w = evidenced(worth);
+  let current = picks.map(p => byId.get(p.id));
+  let score = squadScore(current, w);
+  const start = score;
+  let earned = 0;
+  let spare = bankNow;
+  for (let k = 0; k < maxSwaps; k++) {
+    const ids = new Set(current.map(p => p.id));
+    const clubs = new Map();
+    for (const p of current) clubs.set(p.teamId, (clubs.get(p.teamId) || 0) + 1);
+    let best = null;
+    for (let i = 0; i < current.length; i++) {
+      const out = current[i];
+      const affordable = out.price + spare;
+      const options = DATA.players
+        .filter(c => c.pos === out.pos && !ids.has(c.id) && c.status === "available" &&
+          c.price <= affordable && w(c) > 0 &&
+          (clubs.get(c.teamId) || 0) + 1 - (c.teamId === out.teamId ? 1 : 0) <= RULES.maxPerClub)
+        .sort((a, b) => w(b) - w(a))
+        .slice(0, 25);
+      for (const cand of options) {
+        const trial = current.slice();
+        trial[i] = cand;
+        const s = squadScore(trial, w);
+        if (s > score + 1e-9 && (!best || s > best.s)) best = { s, trial, spend: cand.price - out.price };
+      }
+    }
+    if (!best) break;
+    // One free transfer a week: the k-th swap lands in week k and only pays
+    // for the weeks after it. That timing is precisely what a Wildcard buys.
+    earned += (best.s - score) * Math.max(0, weeks - k) / Math.max(1, weeks);
+    current = best.trial;
+    score = best.s;
+    spare -= best.spend;
+  }
+  return start + earned;
+}
+
+// What a chip has to be worth before the page will tell you to play it.
+const CHIP_WORTH = {
+  bboost: 12,    // bench points in its best week
+  freehit: 10,   // one-week squad's gain over your own XI
+  wildcard: 12,  // full rebuild's gain over the whole window
+  blankXI: 3,    // starters without a fixture: a Free Hit case on its own
+  doubleClubs: 4, // clubs playing twice for a week to count as a double gameweek
+  expiry: 3,     // gameweeks before the set ends at which "use it or lose it" kicks in
+};
+
+/**
+ * Value every chip in every week ahead. Memoised on what it depends on, since
+ * the Free Hit and Wildcard figures each build a squad from the pool.
+ */
+let chipOutlookCache = { key: null, value: null };
+function chipOutlook() {
+  const gws = chipLookahead();
+  const key = [currentGw(), metric, state.picks.map(p => p.id).sort((a, b) => a - b).join(","), bank(), state.freeTransfers].join("|");
+  if (chipOutlookCache.key === key) return chipOutlookCache.value;
+
+  const picks = state.picks;
+  const budget = squadValue() + bank();
+
+  const weeks = gws.map(gw => {
+    const worth = worthIn(gw);
+    const xi = bestXI(picks, worth);
+    const ids = xi ? xi.ids : new Set();
+    const xiEp = xi ? xi.ep : 0;
+
+    let captain = null;
+    for (const id of ids) {
+      const v = worth(id);
+      if (!captain || v > captain.ep) captain = { id, ep: v, fixtures: byId.get(id).fixtures.filter(f => f.gw === gw).length };
+    }
+    const benchPicks = picks.filter(p => !ids.has(p.id));
+    const benchEp = benchPicks.reduce((t, p) => t + worth(p.id), 0);
+    const benchDoubles = benchPicks.filter(p => byId.get(p.id).fixtures.filter(f => f.gw === gw).length >= 2).length;
+    const xiBlank = [...ids].filter(id => !byId.get(id).fixtures.some(f => f.gw === gw)).length;
+
+    const pool = bestPoolXI(worth, budget);
+    const freehit = pool ? Math.max(0, pool.ep - xiEp) : 0;
+
+    return { gw, shape: gwShape(gw), xiEp, captain, benchEp, benchDoubles, xiBlank, freehit };
+  });
+
+  // The Wildcard is a permanent rebuild, so it is judged across the window —
+  // and against what ordinary transfers would reach over that window, since
+  // one free transfer a week closes much of the gap to a perfect squad anyway.
+  const over = worthOver(gws);
+  const mine = bestXI(picks, over);
+  const pool = bestPoolXI(over, budget);
+  const freeSwaps = Math.min(RULES.squadSize, Math.max(0, state.freeTransfers) + Math.max(0, gws.length - 1));
+  const viaTransfers = mine ? reachableBySwaps(picks, over, bank(), freeSwaps, gws.length) : 0;
+  const wildcard = mine && pool ? Math.max(0, pool.ep - Math.max(viaTransfers, mine.ep)) : 0;
+  const rebuildGap = mine && pool ? Math.max(0, pool.ep - mine.ep) : 0;
+  const unavailable = picks.filter(p => availability(byId.get(p.id)) < 0.5).length;
+
+  const value = { gws, weeks, wildcard, rebuildGap, freeSwaps, unavailable };
+  chipOutlookCache = { key, value };
+  return value;
+}
+
+const argmax = (items, f) => items.reduce((best, x) => (best === null || f(x) > f(best) ? x : best), null);
+
+/**
+ * Turn the outlook into one verdict per chip: play it in a given week, or
+ * hold — and in either case why, with the number behind it.
+ */
+function chipVerdicts() {
+  const { gws, weeks, wildcard, rebuildGap, freeSwaps, unavailable } = chipOutlook();
+  const now = currentGw();
+  const set = chipSet(now);
+  const setEnd = set === 1 ? RULES.firstHalfLastGw : RULES.lastGw;
+  const first = gws[0], last = gws[gws.length - 1];
+  const span = first === last ? `GW${first}` : `GW${first}–${last}`;
+  const name = id => byId.get(id).name;
+  const pts = x => x.toFixed(1);
+  const out = {};
+
+  for (const chip of CHIPS) {
+    const played = state.chipsUsed[`${set}:${chip.id}`];
+    if (played) { out[chip.id] = { verdict: "played", gw: played, why: `Played in GW${played}.` }; continue; }
+    if (!weeks.length) { out[chip.id] = { verdict: "hold", why: "No fixtures ahead to judge it on." }; continue; }
+
+    if (chip.id === "3xc") {
+      const week = argmax(weeks, w => (w.captain ? w.captain.ep : 0));
+      const cap = week.captain;
+      if (cap && cap.fixtures >= 2) {
+        out[chip.id] = { verdict: "play", gw: week.gw, gain: cap.ep,
+          why: `<b>${name(cap.id)}</b> has two fixtures in GW${week.gw} and projects <b>${pts(cap.ep)}</b> — tripling adds that again.` };
+      } else {
+        out[chip.id] = { verdict: "hold", gw: week.gw, gain: cap ? cap.ep : 0,
+          why: `No double gameweek for a captain over ${span}, and that is where this chip pays.` +
+               (cap ? ` The best single week is <b>${name(cap.id)}</b> in GW${week.gw} (+${pts(cap.ep)}).` : "") };
+      }
+    }
+
+    if (chip.id === "bboost") {
+      const week = argmax(weeks, w => w.benchEp);
+      const dbl = week.benchDoubles ? ` (${week.benchDoubles} of the 4 play twice)` : "";
+      out[chip.id] = week.benchEp >= CHIP_WORTH.bboost
+        ? { verdict: "play", gw: week.gw, gain: week.benchEp,
+            why: `Your bench projects <b>${pts(week.benchEp)}</b> in GW${week.gw}${dbl} — worth boosting.` }
+        : { verdict: "hold", gw: week.gw, gain: week.benchEp,
+            why: `Your bench projects only <b>${pts(week.benchEp)}</b> in its best week (GW${week.gw})${dbl}. ` +
+                 `It needs about ${CHIP_WORTH.bboost} to be worth it — usually a double gameweek, or a stronger bench.` };
+    }
+
+    if (chip.id === "freehit") {
+      const byGain = argmax(weeks, w => w.freehit);
+      const byBlank = argmax(weeks, w => w.xiBlank);
+      // A week that empties your XI is the Free Hit case even if a lesser
+      // week edges it on raw gain; prefer it unless it is clearly worse.
+      // A one-shot chip is for a week whose *shape* demands it: a blank that
+      // empties your XI, or a double spread across the league. An ordinary
+      // week's paper gain does not qualify, however large — a one-week squad
+      // built by maximising over the whole pool is where the projections are
+      // least trustworthy, and free transfers close ordinary gaps anyway.
+      const byDouble = argmax(weeks, w => w.shape.doubles);
+      const blankCase = byBlank.xiBlank >= CHIP_WORTH.blankXI;
+      const doubleCase = byDouble.shape.doubles >= CHIP_WORTH.doubleClubs && byDouble.freehit >= CHIP_WORTH.freehit;
+      const pick = blankCase ? byBlank : byDouble;
+      if (blankCase || doubleCase) {
+        const shapeNote = blankCase
+          ? `<b>${pick.xiBlank}</b> of your starters have no fixture`
+          : `<b>${pick.shape.doubles}</b> clubs play twice`;
+        out[chip.id] = { verdict: "play", gw: pick.gw, gain: pick.freehit,
+          why: `GW${pick.gw}: ${shapeNote}, and a one-week squad from the pool gains <b>+${pts(pick.freehit)}</b> over your XI.` };
+      } else {
+        out[chip.id] = { verdict: "hold", gw: byGain.gw, gain: byGain.freehit,
+          why: `No blank hits your XI and no double gameweek falls in ${span} — the weeks this chip is for. ` +
+               `(On paper a one-week squad gains up to +${pts(byGain.freehit)} in GW${byGain.gw}, but that is an ordinary week, and free transfers close ordinary gaps.)` };
+      }
+    }
+
+    if (chip.id === "wildcard") {
+      const injured = unavailable ? ` ${unavailable} of your 15 ${unavailable === 1 ? "is" : "are"} unlikely to play.` : "";
+      const swaps = `${freeSwaps} free transfer${freeSwaps === 1 ? "" : "s"}`;
+      out[chip.id] = wildcard >= CHIP_WORTH.wildcard
+        ? { verdict: "play", gw: now, gain: wildcard,
+            why: `A full rebuild is worth <b>+${pts(wildcard)}</b> over ${span} beyond what your ${swaps} could reach on their own (the whole gap to the best squad is ${pts(rebuildGap)}).${injured}` }
+        : { verdict: "hold", gw: now, gain: wildcard,
+            why: `Your ${swaps} over ${span} can reach within <b>${pts(wildcard)}</b> of a full rebuild, so the chip adds little now${injured ? "." + injured : "."}` };
+    }
+
+    // A chip unused at the end of its set is gone; say so while there is time.
+    const left = setEnd - now;
+    if (out[chip.id].verdict === "hold" && left <= CHIP_WORTH.expiry) {
+      out[chip.id].expiring = true;
+      out[chip.id].why += ` <b>Expires after the GW${setEnd} deadline</b> — ` +
+        (left === 0 ? "this is the last week to use it." : `${left} gameweek${left === 1 ? "" : "s"} left.`);
+    }
+  }
+  return out;
 }
 
 /* =====================================================================
@@ -2414,6 +2740,55 @@ function renderChips() {
   }).join("");
 }
 
+function renderChipAdvice() {
+  const box = el("chipAdvice");
+  if (state.picks.length !== RULES.squadSize) {
+    box.innerHTML = `<div class="lbl">Chip timing</div><div class="empty">Fill all 15 places to get chip advice.</div>`;
+    return;
+  }
+
+  const verdicts = chipVerdicts();
+  const gws = chipLookahead();
+  const now = currentGw();
+  const window = gws.length > 1 ? `next ${gws.length} gameweeks, to GW${gws[gws.length - 1]}` : `GW${now}`;
+
+  // What to do *this* week: any chip whose best week is now. Only one can be
+  // played, so if two want the same week the bigger number wins.
+  const playNow = CHIPS.filter(c => verdicts[c.id].verdict === "play" && verdicts[c.id].gw === now)
+    .sort((a, b) => (verdicts[b.id].gain || 0) - (verdicts[a.id].gain || 0));
+  const selected = state.activeChip ? CHIPS.find(c => c.id === state.activeChip) : null;
+  let headline;
+  if (playNow.length) {
+    const top = playNow[0];
+    const also = playNow.slice(1).map(c => c.name);
+    headline = `<b class="go">This week: play the ${top.name}.</b>` +
+      (also.length ? ` ${also.join(" and ")} also point${also.length === 1 ? "s" : ""} at this week, but only one chip can be played — the ${top.name} is worth more.` : "");
+  } else {
+    const next = CHIPS.map(c => verdicts[c.id]).filter(v => v.verdict === "play")
+      .sort((a, b) => a.gw - b.gw)[0];
+    headline = `<b class="hold">This week: no chip.</b>` +
+      (next ? ` The next window is GW${next.gw}.` : ` Nothing in the ${window} calls for one.`);
+  }
+  if (selected) {
+    headline += ` <span class="sel">You have the ${selected.name} selected for GW${now}.</span>`;
+  }
+
+  const rows = CHIPS.map(c => {
+    const v = verdicts[c.id];
+    const badge = v.verdict === "played" ? `Played GW${v.gw}`
+      : v.verdict === "play" ? (v.gw === now ? "Play now" : `Play GW${v.gw}`)
+      : (v.expiring ? "Use or lose" : "Hold");
+    const cls = v.verdict === "played" ? "played" : v.verdict === "play" ? "play" : (v.expiring ? "expiring" : "hold");
+    return `<div class="row"><span class="name">${c.name}</span><span class="badge ${cls}">${badge}</span><span class="why">${v.why}</span></div>`;
+  }).join("");
+
+  box.innerHTML =
+    `<div class="lbl">Chip timing — ${window}</div>` +
+    `<div class="now">${headline}</div>` +
+    rows +
+    `<div class="note">Same projections as the transfer advice, one week at a time. Doubles and blanks are where chips pay, so this is only as good as the fixtures it can see.</div>`;
+}
+
 function renderLog() {
   if (!state.history.length) {
     el("log").innerHTML = `<span style="color:var(--ink-faint)">Saving records your transfers and settles the hit. The gameweek itself follows the real FPL calendar — rebuild after the deadline to move to GW${currentGw() + 1}.</span>`;
@@ -2504,6 +2879,7 @@ function render() {
   renderNotices();
   renderPitch();
   renderChips();
+  renderChipAdvice();
   renderLog();
   renderPool();
   el("confirm").disabled = !isLegal();
