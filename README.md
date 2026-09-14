@@ -43,6 +43,18 @@ the page does not update itself. Re-run the export before each deadline.
 
 ### One-time setup
 
+These steps get the project running from scratch on a **Windows** laptop, in a
+**PowerShell** terminal — VS Code's built-in terminal is one (open it with
+**Ctrl + `**). Install the two prerequisites first if the laptop does not
+already have them:
+
+- **[Python 3.11 or newer](https://www.python.org/downloads/windows/)** — in the
+  installer, tick **"Add python.exe to PATH"** so `python` is found in the
+  terminal.
+- **[Git for Windows](https://git-scm.com/download/win)**.
+
+Clone the repository and step into it:
+
 ```powershell
 git clone https://github.com/rkn321/fpl-rec1.git
 ```
@@ -50,6 +62,8 @@ git clone https://github.com/rkn321/fpl-rec1.git
 ```powershell
 cd fpl-rec1
 ```
+
+Create the virtualenv and install the dependencies (only needed once):
 
 ```powershell
 python -m venv .venv
@@ -61,6 +75,24 @@ python -m venv .venv
 
 `fpl.cmd` in the repo root runs the CLI through that virtualenv, so nothing
 needs activating: `.\fpl <command>`.
+
+Finally, create your own squad file. It is gitignored, so your team stays on
+your laptop and never touches the shared repository:
+
+```powershell
+copy config.local.yaml.example config.local.yaml
+```
+
+Open `config.local.yaml` and replace the example players with your own 15, plus
+your captain, bank and free transfers (see [Frontend](#frontend) for the
+format). Then build the page and open it in your browser:
+
+```powershell
+.\fpl export-frontend --open
+```
+
+That is the whole install. From then on it is that one command before each
+deadline — the details are under [Frontend](#frontend).
 
 ### Backend
 
