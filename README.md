@@ -106,8 +106,19 @@ a **"First time here?"** strip. Pick your 15 players, type in your **bank** and
 touches the shared repository — and from then on the page opens with your team
 already in it.
 
-That is the whole install. Before each deadline it is that one command again —
-the details are under [Frontend](#frontend).
+That is the whole install — everything above is done once.
+
+### Every time after
+
+Before each deadline it is just the one command:
+
+```powershell
+.\fpl serve
+```
+
+It rebuilds the page with fresh prices and fixtures, opens it with your team
+already loaded, and keeps running until you press **Ctrl+C** in the terminal.
+The details are under [Frontend](#frontend).
 
 ### Backend
 
