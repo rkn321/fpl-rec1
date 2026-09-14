@@ -1,5 +1,8 @@
 .venv/
-data/
+# Anchored to the repo root on purpose: a bare `data/` also matches `src/data/`,
+# the package that holds the API client and loaders, and silently kept it out
+# of every commit.
+/data/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,4 +10,4 @@ __pycache__/
 
 # Personal squad, bank and armbands (see config.local.yaml.example)
 config.local.yaml
-data/snapshots/
+/data/snapshots/
