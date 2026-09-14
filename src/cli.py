@@ -4,12 +4,15 @@
     python -m src.cli backtest          # walk-forward baselines
     python -m src.cli predict           # expected points for the next gameweek
     python -m src.cli export-frontend   # build the squad / transfer page
+    python -m src.cli serve             # build it, then serve it so it can save your squad
     python -m src.cli snapshot          # capture live inputs before a deadline
 
-There is no server. `export-frontend` writes one self-contained HTML file with
-the player pool baked into it, and the page does the rest in the browser — so
-"running the frontend" means opening that file. Re-run the command whenever
-prices, fixtures or your squad change.
+`export-frontend` writes one self-contained HTML file with the player pool
+baked into it, and the page does the rest in the browser — so "running the
+frontend" can mean simply opening that file. `serve` puts a small local helper
+behind the same page so that "Save team" can write `config.local.yaml`, which a
+page opened as a file has no way to do. Re-run either whenever prices,
+fixtures or your squad change.
 """
 
 from __future__ import annotations
@@ -186,6 +189,41 @@ def cmd_export_frontend(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Build the page, then serve it locally so it can save your squad.
+
+    Opened as a plain file the page cannot write to disk, which is why
+    `config.local.yaml` had to be filled in by hand. Served from here it gets a
+    "Save team" button that writes the file — and on a fresh clone, where the
+    file does not exist yet, it asks for a team and a bank on the first visit.
+    """
+    from . import frontend, serve
+
+    config = load_config(args.config, use_local=not args.no_local)
+
+    if args.no_build:
+        page = frontend.TEMPLATE_PATH.parent / frontend.OUTPUT_NAME
+        if not page.exists():
+            print(f"{page} does not exist yet — run without --no-build first.")
+            return 1
+    else:
+        client = FPLClient(config)
+        gw = args.gw or client.next_gw()
+        page = frontend.export(
+            config=config, client=client, gw=gw, model=args.model,
+            squad=config.squad_players or None, bank=config.squad_bank,
+            horizon=config.squad_horizon or 5,
+        )
+        print(f"gameweek  : {gw}")
+        print(f"written   : {page}")
+
+    serve.serve(
+        config, directory=page.parent, page=page.name,
+        port=args.port, open_browser=not args.no_open,
+    )
+    return 0
+
+
 def cmd_snapshot(args: argparse.Namespace) -> int:
     """Store bootstrap-static as it stands right now, keyed by gameweek.
 
@@ -303,6 +341,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_front.add_argument("--output", default=None, help="output path")
     p_front.set_defaults(func=cmd_export_frontend)
+
+    p_serve = sub.add_parser(
+        "serve", parents=[common],
+        help="build the page and serve it locally, so it can save your squad to config.local.yaml",
+    )
+    p_serve.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
+    p_serve.add_argument("--model", default="component", help="predictor supplying the model xPts column")
+    p_serve.add_argument("--port", type=int, default=8765, help="local port (default: 8765)")
+    p_serve.add_argument("--no-open", action="store_true", help="do not open the browser")
+    p_serve.add_argument(
+        "--no-build", action="store_true",
+        help="serve the page as last built instead of rebuilding it first",
+    )
+    p_serve.set_defaults(func=cmd_serve)
 
     p_snap = sub.add_parser(
         "snapshot", parents=[common],

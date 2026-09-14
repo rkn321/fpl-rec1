@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Squad Deadline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -465,6 +466,22 @@ main {
 .notice.ok { color: var(--good); background: var(--good-bg); border-color: var(--good); }
 .notice b { font-weight: 600; }
 
+/* Save-to-config strip. Only shown when the page is served by `fpl serve`,
+   since a page opened as a file has no way to write config.local.yaml. */
+.setup {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
+  margin: 0 14px 10px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--accent); background: var(--accent-soft);
+  font-size: 13px;
+}
+.setup .setup-msg { flex: 1 1 100%; }
+.setup label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-faint); }
+.setup input {
+  width: 64px; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: inherit;
+}
+
 /* ------------------------------------------------------------------ chips */
 .chipbar { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 14px; border-top: 1px solid var(--line); }
 
@@ -598,6 +615,13 @@ tbody tr.is-owned:hover { background: var(--accent-soft); filter: brightness(.97
       <button class="btn" id="copySquad" title="Copy your 15 for config.yaml">Copy squad</button>
       <button class="btn" id="autoSquad" title="Only sensible on a Wildcard or Free Hit">Wildcard draft</button>
       <button class="btn btn-danger" id="reset">Reset</button>
+    </div>
+
+    <div class="setup" id="setup" hidden>
+      <div class="setup-msg" id="setupMsg"></div>
+      <label for="setupBank">Bank £m <input type="number" id="setupBank" step="0.1" min="0" inputmode="decimal"></label>
+      <label for="setupFt">Free transfers <input type="number" id="setupFt" step="1" min="0" max="5" inputmode="numeric"></label>
+      <button class="btn btn-primary" id="saveConfig">Save team</button>
     </div>
 
     <div class="notices" id="notices"></div>
@@ -1960,6 +1984,107 @@ function resetAll() {
 }
 
 /* =====================================================================
+   Saving to config.local.yaml — only when served by `fpl serve`
+   ===================================================================== */
+/**
+ * Opened as a file, a page cannot write to disk, so the squad could only
+ * reach `config.local.yaml` by way of "Copy squad" and a paste. Served by
+ * `fpl serve` the page can ask the helper to write it instead.
+ *
+ * Whether that file exists is how the page tells a first visit from a
+ * returning one: absent, it asks for a team and a bank; present, both are
+ * pre-filled and "Save team" simply updates them after transfers.
+ */
+const SERVER = /^https?:$/.test(location.protocol);
+let configExists = null;   // null until the helper has answered (or cannot)
+
+/**
+ * Set the real bank. It cannot be read off today's prices — it depends on what
+ * you paid — so the difference is carried as realised profit, exactly as a
+ * build-time `bank` is, and `bank()` comes out at the figure you typed.
+ */
+function applyBank(tenths) {
+  const paid = state.picks.reduce((t, p) => t + p.buyPrice, 0);
+  state.realised = tenths - (RULES.budget - paid);
+}
+
+function renderSetup() {
+  const box = el("setup");
+  if (!SERVER || configExists === null) { box.hidden = true; return; }
+  box.hidden = false;
+  el("setupMsg").innerHTML = configExists
+    ? `Your team is saved in <code>config.local.yaml</code>. Save again after you make transfers.`
+    : `<b>First time here?</b> Pick your 15 players below, set your bank and free transfers, then save your team.`;
+}
+
+async function loadConfig() {
+  if (!SERVER) return;
+  try {
+    const res = await fetch("/api/config", { cache: "no-store" });
+    const info = await res.json();
+    configExists = !!info.exists;
+    const squad = info.squad || {};
+    // Pre-fill from the file when there is one; otherwise from what the
+    // current squad implies, which is the best guess a new visitor has.
+    el("setupBank").value = squad.bank != null ? Number(squad.bank).toFixed(1) : money(bank());
+    el("setupFt").value = squad.free_transfers != null ? squad.free_transfers : state.freeTransfers;
+  } catch (e) {
+    configExists = null;   // no helper behind this page; keep the strip hidden
+  }
+  renderSetup();
+}
+
+function readBankField() {
+  const v = Number(el("setupBank").value);
+  return Number.isFinite(v) && v >= 0 ? v : null;
+}
+function readFtField() {
+  const v = Number(el("setupFt").value);
+  return Number.isInteger(v) && v >= 0 && v <= 5 ? v : null;
+}
+
+async function saveConfig() {
+  if (state.picks.length !== RULES.squadSize) {
+    return flash(`Pick all ${RULES.squadSize} players before saving your team.`);
+  }
+  const bankM = readBankField();
+  if (bankM === null) return flash("Enter your bank in millions, e.g. 0.3.");
+  const ft = readFtField();
+  if (ft === null) return flash("Free transfers must be a whole number from 0 to 5.");
+
+  const nameOf = id => (id && byId.has(id)) ? byId.get(id).name : null;
+  const payload = {
+    players: state.picks.map(p => byId.get(p.id).name),
+    captain: nameOf(state.captain),
+    vice: nameOf(state.vice),
+    bank: bankM,
+    free_transfers: ft,
+  };
+
+  let out;
+  try {
+    const res = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    out = await res.json();
+    if (!res.ok || !out.ok) return flash(`Could not save: ${out.error || res.statusText}.`);
+  } catch (e) {
+    return flash("Could not reach the local helper — is `fpl serve` still running?");
+  }
+
+  // Make the page agree with what was just written.
+  applyBank(Math.round(bankM * 10));
+  state.freeTransfers = ft;
+  configExists = true;
+  save();
+  renderSetup();
+  render();
+  flash("Saved to config.local.yaml.");
+}
+
+/* =====================================================================
    Render
    ===================================================================== */
 const el = id => document.getElementById(id);
@@ -2424,8 +2549,12 @@ function initChrome() {
     `With only ${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} of this season played, treat ` +
     `the ordering as more trustworthy than the magnitudes.</p>` +
     `<p style="margin:0">GW${DATA.gameweek}, ${DATA.season}. Prices and fixtures captured ` +
-    `${new Date(DATA.generatedAt).toLocaleDateString()} — rebuild with <code>python -m src.cli export-frontend</code> ` +
-    `before each deadline. Your squad is saved in this browser only.</p>`;
+    `${new Date(DATA.generatedAt).toLocaleDateString()} — rebuild with <code>fpl serve</code> ` +
+    `before each deadline. ` +
+    (SERVER
+      ? `Your squad is kept in this browser and, when you press <b>Save team</b>, in <code>config.local.yaml</code>.`
+      : `Your squad is saved in this browser only — run <code>fpl serve</code> to save it to <code>config.local.yaml</code>.`) +
+    `</p>`;
 }
 
 document.addEventListener("click", e => {
@@ -2508,6 +2637,23 @@ el("copySquad").addEventListener("click", copySquad);
 el("autoSquad").addEventListener("click", autoPickSquad);
 el("confirm").addEventListener("click", lockInSquad);
 el("reset").addEventListener("click", resetAll);
+el("saveConfig").addEventListener("click", saveConfig);
+// Typing a bank or transfer count takes effect on the page straight away, so
+// affordability and hit checks are right before anything is written to disk.
+el("setupBank").addEventListener("change", () => {
+  const v = readBankField();
+  if (v === null) return;
+  applyBank(Math.round(v * 10));
+  save();
+  render();
+});
+el("setupFt").addEventListener("change", () => {
+  const v = readFtField();
+  if (v === null) return;
+  state.freeTransfers = v;
+  save();
+  render();
+});
 
 initChrome();
 if (startedFromPreset || adoptedNewerBuild) applyBestXI();   // gives the loaded squad a legal XI and a captain
@@ -2516,6 +2662,7 @@ if (adoptedNewerBuild) {
   save();   // so the adopted squad survives the next reload without re-adopting
   flash("This page was rebuilt with a different squad — updated to match your latest team and bank.");
 }
+loadConfig();   // shows the save strip when a local helper is behind the page
 
 // A page left open over a Friday evening should not still be showing last
 // week. Cheap enough to poll: it only does work when the gameweek changes.

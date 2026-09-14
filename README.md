@@ -93,23 +93,21 @@ locked-down execution policy on some machines), call the virtualenv's Python
 directly instead — it is the same thing, just longer: `.venv\Scripts\python.exe
 -m src.cli <command>`.
 
-Finally, create your own squad file. It is gitignored, so your team stays on
-your laptop and never touches the shared repository:
+Now build the page and open it:
 
 ```powershell
-copy config.local.yaml.example config.local.yaml
+.\fpl serve
 ```
 
-Open `config.local.yaml` and replace the example players with your own 15, plus
-your captain, bank and free transfers (see [Frontend](#frontend) for the
-format). Then build the page and open it in your browser:
+A fresh clone has no team in it, so the page opens with an **empty pitch** and
+a **"First time here?"** strip. Pick your 15 players, type in your **bank** and
+**free transfers**, and press **Save team**. That writes your team to
+`config.local.yaml` — a gitignored file, so it stays on your laptop and never
+touches the shared repository — and from then on the page opens with your team
+already in it.
 
-```powershell
-.\fpl export-frontend --open
-```
-
-That is the whole install. From then on it is that one command before each
-deadline — the details are under [Frontend](#frontend).
+That is the whole install. Before each deadline it is that one command again —
+the details are under [Frontend](#frontend).
 
 ### Backend
 
@@ -149,21 +147,27 @@ doubt. A Friday-afternoon scheduled task is the natural home for it.
 Your squad, bank and armbands live in **`config.local.yaml`**, which is
 gitignored and deep-merged over `config.yaml` at load time — so personal state
 stays out of the repository and a fresh clone opens an empty pitch rather than
-someone else's team. Copy the example to start:
+someone else's team. You never need to edit it by hand: the page writes it.
+
+The weekly command builds the page and serves it locally:
 
 ```powershell
-copy config.local.yaml.example config.local.yaml
+.\fpl serve
 ```
 
-With that in place the weekly command takes no arguments. `fpl.cmd` wraps the virtualenv, and `--open`
-launches the page when it is built:
-
-```powershell
-.\fpl export-frontend --open
-```
+Served this way the page gets a **Save team** button. Whether
+`config.local.yaml` exists is how it tells a first visit from a returning one:
+absent, it shows a **"First time here?"** strip asking for a team, a bank and a
+free-transfer count; present, those come pre-filled and **Save team** simply
+updates them after you make transfers. A browser page cannot write to disk on
+its own, which is what the small helper behind `serve` is for — it listens on
+`127.0.0.1` only and stops when you close the terminal (Ctrl+C).
 
 That is the whole ritual before a deadline. It runs the pipeline itself, so
-`build-features` is not a prerequisite.
+`build-features` is not a prerequisite. If you would rather just open the file
+with no helper running, `.\fpl export-frontend --open` still does that — the
+page works the same, minus saving to the yaml (use **Copy squad** and paste
+instead).
 
 **The gameweek follows the real FPL calendar, not a button.** Every remaining
 deadline is baked into the page, so it works out which gameweek it is from the
@@ -176,19 +180,22 @@ forward. What a rebuild *is* still needed for is the data: prices, projections
 and fixtures are stamped at build time, so once a deadline passes the page says
 so and asks to be rebuilt.
 
-**Transfers you apply on the page are not overwritten by a rebuild.** The page
-keeps your squad in browser storage and prefers it over the list in
-`config.local.yaml`, which only ever seeds a *first* visit. To push the other way —
-a fresh browser, cleared storage, a second machine — hit **Copy squad** on the
-page and paste the result into `squad.players`, which accepts that
-comma-separated form directly.
+**A rebuild picks up whatever is in `config.local.yaml`.** The page keeps your
+working squad in browser storage between visits, and a rebuild whose team, bank
+or free transfers differ from what the browser last saw adopts the new ones —
+so after **Save team**, or after editing the file by hand, the next `fpl serve`
+shows that team, while your chip and hit history is kept. Without the helper,
+**Copy squad** puts the 15 names on the clipboard in the comma-separated form
+`squad.players` accepts, for pasting into the file yourself.
 
 The built page in the repo is generated with `--no-local`, so it ships without
 a squad baked in. Rebuilding normally puts *your* team in it, which will show as
 a modified file — regenerate with `fpl export-frontend --no-local` before
 committing if you would rather it stayed neutral.
 
-Every setting can still be overridden per run:
+`serve` takes `--port` (default 8765), `--no-open`, and `--no-build` to serve
+the page as last built without rebuilding. Every setting of `export-frontend`
+can still be overridden per run:
 
 | Flag | Does |
 |---|---|
@@ -211,7 +218,8 @@ config.yaml               all settings: seasons, paths, API TTLs, windows
 config.local.yaml         your squad and bank (gitignored; see .example)
 src/
   config.py               config loading
-  cli.py                  build-features / backtest / predict
+  cli.py                  build-features / backtest / predict / export-frontend / serve
+  serve.py                local helper behind `fpl serve` — lets the page write config.local.yaml
   pipeline.py             assemble + store the feature frame
   metrics.py              MAE, RMSE, Spearman (overall and within position)
   evaluate.py             walk-forward backtest harness

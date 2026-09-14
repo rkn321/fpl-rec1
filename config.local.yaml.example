@@ -1,9 +1,13 @@
-# Copy to config.local.yaml. Gitignored — this file holds what is yours rather than the
-# project's, and is deep-merged over config.yaml at load time.
+# The shape of config.local.yaml. Gitignored — that file holds what is yours
+# rather than the project's, and is deep-merged over config.yaml at load time.
+#
+# You normally never write it yourself: run `fpl serve`, pick your team on the
+# page and press "Save team", and it is created for you. This example is here
+# for anyone who would rather copy it and fill it in by hand.
 #
 # Only include what you want to override; everything else falls through to
-# config.yaml. Use the page's "Copy squad" button to refresh `players` after
-# making transfers.
+# config.yaml. The page's "Copy squad" button gives `players` in a form that
+# pastes straight in.
 squad:
   players:
     - haaland
