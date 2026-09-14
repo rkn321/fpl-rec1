@@ -45,12 +45,26 @@ the page does not update itself. Re-run the export before each deadline.
 
 These steps get the project running from scratch on a **Windows** laptop, in a
 **PowerShell** terminal — VS Code's built-in terminal is one (open it with
-**Ctrl + `**). Install the two prerequisites first if the laptop does not
-already have them:
+**Ctrl + `**).
+
+First check what is already installed — anyone who has done a bit of development
+usually has both:
+
+```powershell
+python --version
+```
+
+```powershell
+git --version
+```
+
+If `python` reports **3.11 or newer** and `git` prints a version, skip straight
+to the clone below. Install only whatever is missing:
 
 - **[Python 3.11 or newer](https://www.python.org/downloads/windows/)** — in the
   installer, tick **"Add python.exe to PATH"** so `python` is found in the
-  terminal.
+  terminal. Windows ships with no Python (typing `python` may just open the
+  Microsoft Store); install it from python.org.
 - **[Git for Windows](https://git-scm.com/download/win)**.
 
 Clone the repository and step into it:
