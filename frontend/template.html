@@ -788,6 +788,23 @@ function freshState() {
 }
 
 /**
+ * A fingerprint of the squad baked into this build: the players, the bank, the
+ * free-transfer count and the armbands. It is stored on any state seeded from
+ * the preset, so a later build can tell whether its squad has moved on since —
+ * which is how a browser holding last week's squad notices it has been overtaken.
+ */
+function presetSignature() {
+  if (!Array.isArray(DATA.presetSquad) || !DATA.presetSquad.length) return null;
+  return JSON.stringify({
+    squad: [...DATA.presetSquad].sort((a, b) => a - b),
+    bank: typeof DATA.bank === "number" ? DATA.bank : null,
+    ft: typeof DATA.freeTransfers === "number" ? DATA.freeTransfers : null,
+    c: DATA.captain || null,
+    v: DATA.vice || null,
+  });
+}
+
+/**
  * Start from a squad baked in at build time (`--squad` on the exporter).
  *
  * It loads as an *already confirmed* squad, not a draft: you are mid-season
@@ -825,11 +842,39 @@ function presetState() {
     const impliedFromPrices = RULES.budget - s.picks.reduce((t, p) => t + p.buyPrice, 0);
     s.realised = DATA.bank - impliedFromPrices;
   }
+  s.presetSig = presetSignature();
   return s;
 }
 
-let state = load() || presetState() || freshState();
-const startedFromPreset = !load() && !!presetState();
+const savedState = load();
+let state = savedState || presetState() || freshState();
+const startedFromPreset = !savedState && !!presetState();
+
+/**
+ * A saved squad can be overtaken by a newer build. You make a real transfer,
+ * update the config and re-export — but this browser still holds the squad it
+ * saved last time, and `load()` keeps it because those players all still exist.
+ * So the page would quietly ignore the rebuild and show last week's team.
+ *
+ * When the build's baked-in squad no longer matches the copy saved here, adopt
+ * the new squad as the confirmed team, while carrying over the season-long
+ * accounting this browser has tracked (chips played, hits taken, past
+ * gameweeks) — those are history the rebuild does not know about.
+ */
+let adoptedNewerBuild = false;
+if (savedState) {
+  const sig = presetSignature();
+  if (sig && savedState.presetSig !== sig) {
+    const rebuilt = presetState();
+    if (rebuilt) {
+      rebuilt.history = Array.isArray(savedState.history) ? savedState.history : [];
+      rebuilt.chipsUsed = savedState.chipsUsed || {};
+      rebuilt.totalHits = savedState.totalHits || 0;
+      state = rebuilt;
+      adoptedNewerBuild = true;
+    }
+  }
+}
 
 /**
  * Bring stored state into line with the real calendar, and repair anything an
@@ -2465,8 +2510,12 @@ el("confirm").addEventListener("click", lockInSquad);
 el("reset").addEventListener("click", resetAll);
 
 initChrome();
-if (startedFromPreset) applyBestXI();   // gives the loaded squad a legal XI and a captain
+if (startedFromPreset || adoptedNewerBuild) applyBestXI();   // gives the loaded squad a legal XI and a captain
 render();
+if (adoptedNewerBuild) {
+  save();   // so the adopted squad survives the next reload without re-adopting
+  flash("This page was rebuilt with a different squad — updated to match your latest team and bank.");
+}
 
 // A page left open over a Friday evening should not still be showing last
 // week. Cheap enough to poll: it only does work when the gameweek changes.
