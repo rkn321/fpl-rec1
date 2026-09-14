@@ -9,6 +9,9 @@
 Predicts expected FPL points per player per gameweek for the 2026/27 season, and
 turns that into ranked transfer advice for a real squad.
 
+> **Just want to run it?** Skip everything else and follow the
+> **[Quick start](#quick-start)** — four steps, about five minutes.
+
 **Repository:** https://github.com/rkn321/fpl-rec1
 
 Built against [`fpl-model-spec.md`](fpl-model-spec.md). **Phases 1–3 are
@@ -27,28 +30,16 @@ On top of that sits a self-contained transfer tool — see
 starting XI and tells you when the best move on the board is not worth the
 4-point hit.
 
-## Running it
+## Quick start
 
-**There is no server, and nothing to keep running.** The architecture is a
-batch backend and a static frontend:
+This is everything, start to finish, on a **Windows** laptop. It takes about
+five minutes, and you only do Steps 1–3 once.
 
-- **Backend** — a Python CLI. It runs on demand, pulls from the FPL API, and
-  writes files: a parquet feature frame, backtest CSVs, and the HTML page.
-- **Frontend** — one self-contained HTML file with the player pool baked into
-  it. All the squad and transfer logic runs in the browser. You open the file;
-  there is no port, no `npm`, and no build step beyond the command that writes it.
+All the commands go in a **PowerShell terminal**. The easiest way to get one is
+to open **VS Code** and press **Ctrl + `** (the key above Tab); or search
+Windows for "PowerShell". Type each command exactly as shown and press Enter.
 
-The consequence worth remembering: because the data is baked in at build time,
-the page does not update itself. Re-run the export before each deadline.
-
-### One-time setup
-
-These steps get the project running from scratch on a **Windows** laptop, in a
-**PowerShell** terminal — VS Code's built-in terminal is one (open it with
-**Ctrl + `**).
-
-First check what is already installed — anyone who has done a bit of development
-usually has both:
+### Step 1 — Check you have Python and Git
 
 ```powershell
 python --version
@@ -58,16 +49,15 @@ python --version
 git --version
 ```
 
-If `python` reports **3.11 or newer** and `git` prints a version, skip straight
-to the clone below. Install only whatever is missing:
+- If the first prints **`Python 3.11`** or higher **and** the second prints a
+  Git version, you are set — go to **Step 2**.
+- If either says *"not recognized"* (or typing `python` opens the Microsoft
+  Store), install what is missing, then **close and reopen the terminal**:
+  - **Python** — https://www.python.org/downloads/windows/ — on the first
+    installer screen tick **"Add python.exe to PATH"** before clicking Install.
+  - **Git** — https://git-scm.com/download/win — the defaults are fine.
 
-- **[Python 3.11 or newer](https://www.python.org/downloads/windows/)** — in the
-  installer, tick **"Add python.exe to PATH"** so `python` is found in the
-  terminal. Windows ships with no Python (typing `python` may just open the
-  Microsoft Store); install it from python.org.
-- **[Git for Windows](https://git-scm.com/download/win)**.
-
-Clone the repository and step into it:
+### Step 2 — Download the project
 
 ```powershell
 git clone https://github.com/rkn321/fpl-rec1.git
@@ -77,7 +67,10 @@ git clone https://github.com/rkn321/fpl-rec1.git
 cd fpl-rec1
 ```
 
-Create the virtualenv and install the dependencies (only needed once):
+You are now inside the project folder. Every command from here on is run from
+inside it.
+
+### Step 3 — Install what it needs (once)
 
 ```powershell
 python -m venv .venv
@@ -87,40 +80,75 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-`fpl.cmd` in the repo root runs the CLI through that virtualenv, so nothing
-needs activating: `.\fpl <command>`. If PowerShell refuses to run `.\fpl` (a
-locked-down execution policy on some machines), call the virtualenv's Python
-directly instead — it is the same thing, just longer: `.venv\Scripts\python.exe
--m src.cli <command>`.
+The second command downloads the libraries and takes a minute or two. A lot of
+text scrolling past is normal.
 
-Now build the page and open it:
+### Step 4 — Run it
 
 ```powershell
 .\fpl serve
 ```
 
-A fresh clone has no team in it, so the page opens with an **empty pitch** and
-a **"First time here?"** strip. Pick your 15 players, type in your **bank** and
-**free transfers**, and press **Save team**. That writes your team to
-`config.local.yaml` — a gitignored file, so it stays on your laptop and never
-touches the shared repository — and from then on the page opens with your team
-already in it.
+Wait until it prints `serving   : http://127.0.0.1:8765/...` — your browser then
+opens the page by itself. The first run takes a little while, because it
+downloads the latest player data and builds the predictions.
 
-That is the whole install — everything above is done once.
+**The first time**, the page shows an empty pitch and a box saying **"First
+time here?"**. Pick your 15 players from the list on the right, type your
+**bank** and **free transfers** into the box, and click **Save team**. That is
+it — your team is saved on your laptop, in a file called `config.local.yaml`
+that only you have.
 
 ### Every time after
 
-Before each deadline it is just the one command:
+Before each deadline, run **Step 4 again** — just that one command:
 
 ```powershell
 .\fpl serve
 ```
 
-It rebuilds the page with fresh prices and fixtures, opens it with your team
-already loaded, and keeps running until you press **Ctrl+C** in the terminal.
-The details are under [Frontend](#frontend).
+The page opens with your team already in it, plus the latest prices and
+fixtures. Leave the terminal open while you use the page, and press **Ctrl+C**
+in it when you are done.
+
+### If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| `python` is not recognized | Install Python (Step 1), tick **"Add python.exe to PATH"**, then close and reopen the terminal. |
+| `.\fpl` is not recognized, or "cannot be loaded" | Check you are inside the `fpl-rec1` folder (`cd fpl-rec1`). If PowerShell still refuses, run `.venv\Scripts\python.exe -m src.cli serve` instead — it does exactly the same thing. |
+| The page says the deadline has passed and asks to be rebuilt | Press **Ctrl+C** in the terminal and run `.\fpl serve` again. |
+| The browser did not open by itself | Open it yourself and go to `http://127.0.0.1:8765/squad-picker.html`. |
+
+## Running it
+
+**Nothing to host, and nothing to keep running between deadlines.** The
+architecture is a batch backend and a static frontend:
+
+- **Backend** — a Python CLI. It runs on demand, pulls from the FPL API, and
+  writes files: a parquet feature frame, backtest CSVs, and the HTML page.
+- **Frontend** — one self-contained HTML file with the player pool baked into
+  it. All the squad and transfer logic runs in the browser. `fpl serve` keeps a
+  small local helper up only while the page is open, so that **Save team** can
+  write your `config.local.yaml` — a page opened as a plain file cannot write to
+  disk on its own.
+
+The consequence worth remembering: because the data is baked in at build time,
+the page does not update itself. Re-run `fpl serve` before each deadline.
+
+### Setup
+
+The install and run commands live in one place — the **[Quick start](#quick-start)**
+above — so they cannot drift out of step. The one thing worth knowing behind
+them: `fpl.cmd` in the repo root runs the CLI through the project's virtualenv,
+so nothing ever needs activating and `.\fpl <command>` is all you type. If
+PowerShell refuses to run it (a locked-down execution policy on some machines),
+`.venv\Scripts\python.exe -m src.cli <command>` is the identical long form.
 
 ### Backend
+
+**You do not need any of these to use the page** — `fpl serve` runs everything
+it needs by itself. They are for working on the model.
 
 ```powershell
 .\fpl build-features
@@ -141,7 +169,9 @@ under `data/cache/`, so later runs are fast.
 `predict` writes `data/processed/expected_points_gw{N}.csv` and prints the top of
 the list.
 
-### Before each deadline
+### Capturing training data (optional)
+
+Not needed to use the page. This is for improving next season's model:
 
 ```powershell
 .\fpl snapshot
