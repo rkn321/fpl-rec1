@@ -111,6 +111,27 @@ The page opens with your team already in it, plus the latest prices and
 fixtures. Leave the terminal open while you use the page, and press **Ctrl+C**
 in it when you are done.
 
+### Already downloaded it before? Get the latest version
+
+If you cloned the project earlier, pull the newest version first, then run it.
+Do the same any time you are told there is an update:
+
+```powershell
+cd fpl-rec1
+```
+
+```powershell
+git pull
+```
+
+```powershell
+.\fpl serve
+```
+
+Your saved team is not affected — it lives in `config.local.yaml`, which
+`git pull` never touches. (If you never did Step 3, do that once before
+`.\fpl serve`.)
+
 ### If something goes wrong
 
 | What you see | What to do |
