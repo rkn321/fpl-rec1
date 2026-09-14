@@ -129,8 +129,18 @@ git pull
 ```
 
 Your saved team is not affected — it lives in `config.local.yaml`, which
-`git pull` never touches. (If you never did Step 3, do that once before
-`.\fpl serve`.)
+`git pull` never touches.
+
+If you never ran the install step the first time round, run these two once,
+after `git pull` and before `.\fpl serve`:
+
+```powershell
+python -m venv .venv
+```
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ### If something goes wrong
 
