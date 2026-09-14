@@ -74,7 +74,10 @@ python -m venv .venv
 ```
 
 `fpl.cmd` in the repo root runs the CLI through that virtualenv, so nothing
-needs activating: `.\fpl <command>`.
+needs activating: `.\fpl <command>`. If PowerShell refuses to run `.\fpl` (a
+locked-down execution policy on some machines), call the virtualenv's Python
+directly instead — it is the same thing, just longer: `.venv\Scripts\python.exe
+-m src.cli <command>`.
 
 Finally, create your own squad file. It is gitignored, so your team stays on
 your laptop and never touches the shared repository:
