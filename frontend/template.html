@@ -1437,11 +1437,28 @@ function rate(p) {
   return (observedRate(p) * played + priorRate(p) * PRIOR_WEIGHT) / (played + PRIOR_WEIGHT);
 }
 
+/**
+ * How much of FPL's availability flag is still *ours* to apply.
+ *
+ * The model already applies a flagged percentage as a ceiling on minutes, and
+ * FPL's own figure is cut by it too (a 75% player's xP is 75% of his form).
+ * Scaling either by availability again counts the injury twice — a 75% player
+ * weighted at 56% — which is exactly the case this page exists to weigh up.
+ * So when FPL gave a percentage and the metric carries it, the factor is 1.
+ * A bare status with no percentage (unavailable, left the league) is not in
+ * either figure, and the raw historical rates carry nothing, so those still
+ * get the full treatment.
+ */
+function availabilityFactor(p) {
+  const carried = (metric === "ep" || metric === "epFpl") && p.chance !== null && p.chance !== undefined;
+  return carried ? 1 : availability(p);
+}
+
 /** Expected points over the horizon: rate x availability x fixture run. */
 function horizonScore(p) {
   const fixtures = fixturesInHorizon(p);
   const weight = fixtures.reduce((t, f) => t + (FDR_MULTIPLIER[f.difficulty] ?? 1), 0);
-  return rate(p) * availability(p) * weight;
+  return rate(p) * availabilityFactor(p) * weight;
 }
 
 const scoreById = id => horizonScore(byId.get(id));
@@ -1926,7 +1943,7 @@ function autoPickSquad() {
 function gwScore(p, gw) {
   let weight = 0;
   for (const f of p.fixtures) if (f.gw === gw) weight += FDR_MULTIPLIER[f.difficulty] ?? 1;
-  return rate(p) * availability(p) * weight;
+  return rate(p) * availabilityFactor(p) * weight;
 }
 
 /** A value function usable by both the squad builder (objects) and bestXI (ids). */
