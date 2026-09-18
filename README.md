@@ -212,7 +212,21 @@ Stores the live player data — FPL's expected points, availability flags,
 set-piece orders — labelled by gameweek under `data/snapshots/`. These inputs
 are only ever *current* in the API; capturing them before each deadline is what
 makes them trainable next season without the "was this scraped after the match"
-doubt. A Friday-afternoon scheduled task is the natural home for it.
+doubt.
+
+It labels the capture by the *upcoming* gameweek and overwrites, so the
+simplest schedule is also the right one: run it regularly, and the last run
+before each deadline is automatically the freshest capture. This registers a
+Windows scheduled task that runs it every six hours, catching up on wake if the
+laptop was asleep, with output in `data\snapshots\snapshot.log` (paste into
+PowerShell from inside the project folder — one machine's captures are all the
+project needs):
+
+```powershell
+$repo = (Get-Location).Path; $a = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c call fpl.cmd snapshot >> data\snapshots\snapshot.log 2>&1" -WorkingDirectory $repo; $t = New-ScheduledTaskTrigger -Daily -At "00:00"; $t.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 59)).Repetition; $s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew; Register-ScheduledTask -TaskName "FPL snapshot" -Action $a -Trigger $t -Settings $s -Force | Out-Null; Start-ScheduledTask -TaskName "FPL snapshot"; "registered and run once"
+```
+
+To remove it: `Unregister-ScheduledTask -TaskName "FPL snapshot" -Confirm:$false`.
 
 ### Frontend
 
