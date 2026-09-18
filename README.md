@@ -443,7 +443,12 @@ haul is not projected across a horizon as though it were the norm.
 ## Backtest results
 
 Walk-forward over **2024-25**: train on gameweeks `< t`, predict `t`, scored per
-player-gameweek (double gameweeks summed).
+player-gameweek (double gameweeks summed). "Train on gameweeks `< t`" means
+prior seasons in full plus the current one up to `t` — the rule lives in one
+place, `training_window`, and the page and `predict` fit on exactly it, so the
+figures shown are the figures validated here. (They did not, until GW5 of
+2026-27: a bare `gw < t` had been keeping only the first weeks of *every*
+season, an eighth of the data.)
 
 2024-25 rather than 2025-26 on purpose. The historical `xP` scrape is patchy —
 27 of 38 gameweeks in 2025-26 have it zero for *every* player — so a backtest
