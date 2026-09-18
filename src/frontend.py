@@ -26,6 +26,7 @@ import pandas as pd
 from .config import Config, load_config
 from .data.fpl_api import ELEMENT_TYPE_TO_POSITION, FPLAPIError, FPLClient
 from .models.baselines import Predictor, all_predictors
+from .evaluate import training_window
 
 log = logging.getLogger(__name__)
 
@@ -375,7 +376,7 @@ def build_player_data(
     target = frame[(frame["season"] == config.season_current) & (frame["gw"] == gw)].copy()
 
     predictor: Predictor = all_predictors()[model]
-    predictor.fit(frame[frame["gw"] < gw], feature_cols)
+    predictor.fit(training_window(frame, config.season_current, gw), feature_cols)
     target["ep"] = predictor.predict(target)
 
     # Sum across fixtures: a double gameweek pays for both.

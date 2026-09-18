@@ -27,7 +27,7 @@ import pandas as pd
 from . import pipeline
 from .config import load_config
 from .data.fpl_api import FPLClient
-from .evaluate import run_backtest
+from .evaluate import run_backtest, training_window
 from .models.baselines import all_predictors, default_baselines
 
 
@@ -101,7 +101,7 @@ def cmd_predict(args: argparse.Namespace) -> int:
         return 1
 
     predictor = all_predictors()[args.model]
-    predictor.fit(df[df["gw"] < gw], feature_cols)
+    predictor.fit(training_window(df, config.season_current, gw), feature_cols)
     target["expected_points"] = predictor.predict(target)
 
     # A double gameweek means two fixtures; FPL pays you for both.

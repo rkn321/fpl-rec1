@@ -51,6 +51,19 @@ def playing_filter(rows: pd.DataFrame, min_minutes_r3: float = 1.0) -> pd.Series
     return rows["minutes_r3"].fillna(0.0) >= min_minutes_r3
 
 
+def training_window(df: pd.DataFrame, season: str, gw: int) -> pd.DataFrame:
+    """Everything that was known before `gw` of `season`.
+
+    Prior seasons in full, plus this season's gameweeks before `gw`. This is
+    the one place the rule lives: the page and `predict` must fit on exactly
+    what the backtest fits on, or the numbers they show are not the numbers
+    that were validated. A bare `df["gw"] < gw` looks the same but keeps only
+    the first few weeks of *every* season — for gameweek 5 that is 7,000 rows
+    instead of 59,000.
+    """
+    return df[(df["season"] < season) | ((df["season"] == season) & (df["gw"] < gw))]
+
+
 def walk_forward(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -79,7 +92,7 @@ def walk_forward(
 
         for gw in testable:
             if train_on_prior_seasons:
-                train = df[(df["season"] < s) | ((df["season"] == s) & (df["gw"] < gw))]
+                train = training_window(df, s, gw)
             else:
                 train = season_rows[season_rows["gw"] < gw]
             test = season_rows[season_rows["gw"] == gw]
