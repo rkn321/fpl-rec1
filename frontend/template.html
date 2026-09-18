@@ -1455,11 +1455,37 @@ function availabilityFactor(p) {
   return carried ? 1 : availability(p);
 }
 
+/** The fixture weight of one gameweek: the multipliers of its fixtures, summed. */
+function fixtureWeight(p, gw) {
+  let w = 0;
+  for (const f of p.fixtures) if (f.gw === gw) w += FDR_MULTIPLIER[f.difficulty] ?? 1;
+  return w;
+}
+
+/**
+ * How much of the fixture weighting is still *ours* to apply.
+ *
+ * The model's figure already includes the week it was built for — fixture
+ * difficulty is one of its inputs, which is why a player facing Arsenal is
+ * marked down before the page ever sees him. Multiplying it by that week's
+ * multiplier again counted the fixture twice: at a one-week horizon a
+ * difficulty-2 home game inflated a 6.9 to 8.1. So for the model metric,
+ * every week's weight is taken relative to the built week's, and the built
+ * week comes out at exactly the figure the model gave. The raw metrics —
+ * form, season so far, FPL's figure (which early in a season is just form) —
+ * carry no fixture, so they keep the plain weights.
+ */
+function weightScale(p) {
+  if (metric !== "ep") return 1;
+  const built = fixtureWeight(p, DATA.gameweek);
+  return built > 0 ? 1 / built : 1;
+}
+
 /** Expected points over the horizon: rate x availability x fixture run. */
 function horizonScore(p) {
   const fixtures = fixturesInHorizon(p);
   const weight = fixtures.reduce((t, f) => t + (FDR_MULTIPLIER[f.difficulty] ?? 1), 0);
-  return rate(p) * availabilityFactor(p) * weight;
+  return rate(p) * availabilityFactor(p) * weight * weightScale(p);
 }
 
 const scoreById = id => horizonScore(byId.get(id));
@@ -1942,9 +1968,7 @@ function autoPickSquad() {
 
 /** Expected points in one gameweek: rate x availability x that week's fixtures. */
 function gwScore(p, gw) {
-  let weight = 0;
-  for (const f of p.fixtures) if (f.gw === gw) weight += FDR_MULTIPLIER[f.difficulty] ?? 1;
-  return rate(p) * availabilityFactor(p) * weight;
+  return rate(p) * availabilityFactor(p) * fixtureWeight(p, gw) * weightScale(p);
 }
 
 /** A value function usable by both the squad builder (objects) and bestXI (ids). */
