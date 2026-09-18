@@ -32,6 +32,12 @@ log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "frontend" / "template.html"
 OUTPUT_NAME = "squad-picker.html"
+
+# The terms `combine()` returns, in the order the page shows them.
+BREAKDOWN_TERMS = (
+    "p_play", "p_60", "expected_minutes",
+    "appearance", "goals", "assists", "clean_sheet", "goals_conceded", "saves", "defcon", "bonus", "cards",
+)
 DATA_PLACEHOLDER = "/*__FPL_DATA__*/null"
 
 # Name-matching confidence. Above `_GOOD_MATCH` the squad's shape is allowed to
@@ -382,6 +388,16 @@ def build_player_data(
     # Sum across fixtures: a double gameweek pays for both.
     ep = target.groupby("player_id", observed=True)["ep"].sum()
 
+    # The same figure decomposed into the scoring terms it was built from, so
+    # the page can answer "why is he rated that" for any player. Points terms
+    # sum across a double; the chance of playing does not.
+    why: pd.DataFrame | None = None
+    if hasattr(predictor, "predict_breakdown"):
+        bd = predictor.predict_breakdown(target).assign(player_id=target["player_id"].to_numpy())
+        agg = {t: "sum" for t in BREAKDOWN_TERMS}
+        agg.update({"p_play": "max", "p_60": "max"})
+        why = bd.groupby("player_id", observed=True).agg(agg)
+
     players = client.players()
     teams = client.teams().set_index("id")["short_name"].to_dict()
     # A few gameweeks beyond the horizon, so the page still has fixtures to
@@ -419,6 +435,10 @@ def build_player_data(
                 ),
                 "last": last_season.get(pid),
                 "fixtures": fixtures.get(team_id, []),
+                "why": (
+                    {t: round(float(why.at[pid, t]), 2) for t in BREAKDOWN_TERMS}
+                    if why is not None and pid in why.index else None
+                ),
             }
         )
 

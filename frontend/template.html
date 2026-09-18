@@ -307,6 +307,7 @@ main {
   font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums;
 }
 .card .figs .ep { color: var(--accent); font-weight: 600; }
+.why { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; text-decoration-color: var(--line-strong); }
 
 .card .fix { font-size: 10px; color: var(--ink-faint); font-family: var(--font-mono); }
 /* Points scored so far this gameweek, once the player's match is under way.
@@ -2582,8 +2583,28 @@ function cardHTML(pick) {
     <div class="nm">${p.name}${flag}</div>
     <div class="meta"><span>${p.team}</span><span>${p.pos}</span></div>
     <div class="fix">${fixtureText(p)}</div>
-    <div class="figs"><span>£${money(p.price)}</span>${livePill(pick.id)}<span class="ep">${epOf(p).toFixed(1)}</span></div>
+    <div class="figs"><span>£${money(p.price)}</span>${livePill(pick.id)}<span class="ep why" title="${whyText(p)}">${epOf(p).toFixed(1)}</span></div>
   </div>`;
+}
+
+/**
+ * "Why is he rated that": the model's figure decomposed into the scoring
+ * terms it was built from, as a hover on the number itself. Every term is
+ * from the same prediction, so they add up to the figure shown.
+ */
+function whyText(p) {
+  const w = p.why;
+  if (!w) return `Model xPts ${p.ep.toFixed(1)} for GW${DATA.gameweek}`;
+  const pct = x => `${Math.round(x * 100)}%`;
+  const s = x => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(2);
+  const lines = [
+    `Model xPts ${p.ep.toFixed(1)} for GW${DATA.gameweek} — how it adds up`,
+    `plays ${pct(w.p_play)} · 60+ min ${pct(w.p_60)} · about ${Math.round(w.expected_minutes)} min`,
+    `appearance ${s(w.appearance)}  goals ${s(w.goals)}  assists ${s(w.assists)}`,
+    `clean sheet ${s(w.clean_sheet)}  conceded ${s(w.goals_conceded)}  saves ${s(w.saves)}`,
+    `defcon ${s(w.defcon)}  bonus ${s(w.bonus)}  cards ${s(w.cards)}`,
+  ];
+  return lines.join("\n");
 }
 
 function livePill(id) {
@@ -2972,7 +2993,7 @@ function renderPool() {
       <td><div class="p-name">${p.name}${flag}</div><div class="p-sub">${p.team} · ${p.pos}</div></td>
       <td>${fixtureText(p)}</td>
       <td class="num">${money(p.price)}</td>
-      <td class="num" ${metric === "ep" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ep.toFixed(1)}</td>
+      <td class="num why" title="${whyText(p)}" ${metric === "ep" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.ep.toFixed(1)}</td>
       <td class="num" ${metric === "epFpl" ? 'style="color:var(--accent);font-weight:600"' : ""}>${p.epFpl.toFixed(1)}</td>
       <td class="num" ${metric === "ppgw" ? 'style="color:var(--accent);font-weight:600"' : ""}>${pointsPerGameweek(p).toFixed(1)}</td>
       <td class="num">${p.owned.toFixed(1)}</td>
