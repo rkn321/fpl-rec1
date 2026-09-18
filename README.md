@@ -464,6 +464,14 @@ figures shown are the figures validated here. (They did not, until GW5 of
 2026-27: a bare `gw < t` had been keeping only the first weeks of *every*
 season, an eighth of the data.)
 
+History is three seasons, 2023-24 to 2025-26. The third was added while testing
+a cross-season prior (below), and turned out to be the largest single
+improvement measured on this model: against two seasons, MAE 1.297 to 1.218
+and within-position Spearman 0.694 to 0.709 on the same folds, and the real
+points of the model's top XI at a cold start 10.4 to 10.7 a player. More
+history beat cleverer features. A fourth season (2022-23, the first with xG)
+is the obvious next thing to try.
+
 2024-25 rather than 2025-26 on purpose. The historical `xP` scrape is patchy —
 27 of 38 gameweeks in 2025-26 have it zero for *every* player — so a backtest
 there scores `fpl_ep` on the handful of gameweeks that survive while every other
@@ -475,7 +483,7 @@ plays and their guaranteed zeros flatter every metric:
 
 | model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
 |---|---|---|---|---|---|
-| **`component`** | 34 | **1.295** | **2.034** | **0.690** | **0.695** |
+| **`component`** | 34 | **1.218** | **1.886** | **0.718** | **0.709** |
 | `fpl_ep` | 31 | 1.513 | 2.302 | 0.676 | 0.665 |
 | `season_mean` | 34 | 1.844 | 2.751 | 0.402 | 0.387 |
 | `minutes_x_pp90` | 34 | 1.914 | 2.774 | 0.419 | 0.404 |
@@ -485,7 +493,7 @@ plays and their guaranteed zeros flatter every metric:
 
 | model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
 |---|---|---|---|---|---|
-| **`component`** | 34 | **0.707** | **1.474** | **0.775** | **0.770** |
+| **`component`** | 34 | **0.667** | **1.369** | **0.787** | **0.779** |
 | `fpl_ep` | 31 | 0.882 | 1.690 | 0.758 | 0.751 |
 | `minutes_x_pp90` | 34 | 1.016 | 2.013 | 0.716 | 0.709 |
 | `last3_mean` | 34 | 1.061 | 2.155 | 0.703 | 0.697 |
@@ -511,7 +519,11 @@ what the model contributes:
 |---|---|---|
 | `fpl_ep` alone | 1.513 | 0.665 |
 | component **without** `xP` | 1.718 | 0.468 |
-| component **with** `xP` | **1.295** | **0.695** |
+
+(The middle row was measured with two seasons of history; the comparison it
+makes still stands.)
+
+| component **with** `xP` | **1.218** | **0.709** |
 
 The middle row is the model on its own inputs, and it loses to FPL. That gap was
 never a modelling failure: FPL's figure is computed with **team news** — press
@@ -603,6 +615,21 @@ figure to the wrong people. The individual failure is real; the fix for it is
 not this. It is most likely a cross-season prior on underlying *rates* (last
 season's xG per 90, minutes share) — the one idea on this list not yet tested.
 
+**A cross-season prior on underlying rates.** The idea left open above: last
+season's xG per 90, xA per 90, minutes share, start rate, defensive
+contribution, threat and creativity, joined by name (the one join FPL's yearly
+renumbering leaves), null below five games or with no prior season. Rates
+rather than points, so a player whose situation changed is read afresh. Built,
+tested for leakage across seasons, and run on identical folds with and without
+the eight features — with a third season of history added so the priors were
+populated in training. A wash: MAE 1.004 to 1.032 and 1.197 to 1.199 at the two
+cold starts, 1.218 to 1.225 over the full season, ranking within a hundredth
+either way, and the top XI's real points *down* 10.7 to 10.4 on the window
+that matters most. On individual players it did what was intended — Groß, a
+creator with 0.08 prior xG per 90, moved 5.1 to 4.0; Haaland 6.9 to 7.2 — but
+the midfielder whose 8.2 prompted it had no prior season at all, and no prior
+can reach a player with no history. Not adopted; the extra season was.
+
 **A last-season points prior.** Rejected before testing, on the grounds that a
 player whose situation has changed — a new club, a first-choice role — is
 exactly who it would misrate.
@@ -632,7 +659,7 @@ enable them.
 
 ## Current state and next step
 
-The feature frame covers 2024-25, 2025-26 and the current season: 57,650
+The feature frame covers 2023-24, 2024-25, 2025-26 and the current season: 89,314
 player-fixtures and 189 features. DEFCON columns exist only from 2025-26 and are
 NaN before that, which is carried explicitly rather than filled.
 
