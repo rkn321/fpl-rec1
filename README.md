@@ -587,6 +587,22 @@ contributions, and the model was right about him. The Groß/Haaland compression
 at the very top is real but is a magnitude issue, not a ranking one, and every
 hand fix cost more than it recovered.
 
+**`xP` out of the scoring-rate and bonus models only, with xG constrained.** A
+more surgical version of the first idea, prompted by a defensive midfielder
+rated 8.2 off one freak 14-point game: his `xP` and points form had leaked into
+a *goals* prediction (0.44 expected, on 0.10 xG a game) and a *bonus* prediction
+(ranked above Palmer for BPS in his own fixture). Keep `xP` in the minutes
+model, remove it from goals, assists and BPS, and make the rates monotone in
+xG, xA and threat. Every piece lost. The monotone constraint changed nothing
+(the trees were not violating it). Removing `xP` from the rates alone cost
+about 0.2 MAE and 0.04 in ranking. Removing it from the BPS model as well
+*halved* the real points scored by the model's top XI (10.4 to 5.5 a player at
+the cold start, 9.5 to 5.7 over 2024-25): without it the BPS model cannot rank
+players within a fixture, and the rank-to-bonus table then hands the top bonus
+figure to the wrong people. The individual failure is real; the fix for it is
+not this. It is most likely a cross-season prior on underlying *rates* (last
+season's xG per 90, minutes share) — the one idea on this list not yet tested.
+
 **A last-season points prior.** Rejected before testing, on the grounds that a
 player whose situation has changed — a new club, a first-choice role — is
 exactly who it would misrate.
