@@ -70,6 +70,14 @@ squad:
   horizon: 5
 
 evaluate:
+  # The season a bare `fpl backtest` tests. Not simply the latest one: the
+  # historical xP scrape for 2025-26 is zero for 27 of its 38 gameweeks, so
+  # the model's largest input is blank most of that season and FPL's own
+  # figure can only be scored on the few weeks it exists — a comparison on
+  # different weeks is not a comparison. 2024-25 is 91% complete, so every
+  # model is scored on the same 34 weeks with its inputs intact. Override
+  # per run with `--season`.
+  season: "2024-25"
   # Walk-forward: train on GW <= t, predict GW t+1. Start once this many
   # gameweeks of history exist within the season.
   min_train_gws: 4

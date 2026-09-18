@@ -59,7 +59,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     else:
         df, feature_cols = pipeline.load_processed(config)
 
-    season = args.season or config.season_history[-1]
+    # The configured reference season, not merely the latest one: see the
+    # note on `evaluate.season` in config.yaml for why they differ.
+    season = args.season or config.evaluate.get("season") or config.season_history[-1]
     predictors = default_baselines() if args.baselines_only else all_predictors()
     results = run_backtest(
         df,
@@ -296,7 +298,10 @@ def main(argv: list[str] | None = None) -> int:
     p_build.set_defaults(func=cmd_build_features)
 
     p_bt = sub.add_parser("backtest", parents=[common], help="walk-forward baseline backtest")
-    p_bt.add_argument("--season", default=None, help="season to test (default: latest historical)")
+    p_bt.add_argument(
+        "--season", default=None,
+        help="season to test (default: evaluate.season in config.yaml, currently 2024-25)",
+    )
     p_bt.add_argument("--rebuild", action="store_true", help="rebuild features first")
     p_bt.add_argument(
         "--baselines-only", action="store_true",
