@@ -231,43 +231,44 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
     The model's most valuable inputs — FPL's expected points, the availability
     flag, set-piece orders — are only ever *current* in the API. Their history
-    in the vaastav dataset is patchy and only probably pre-deadline. Run this
-    before each deadline and next season trains on data that is pre-deadline by
-    construction, with none of the "was this scraped after the match" doubt.
+    in the vaastav dataset is patchy and only probably pre-deadline, and the
+    live season has none. Run this before each deadline and that gameweek's
+    played rows train with `xP` present, pre-deadline by construction (see
+    `src/data/snapshots.py`).
 
     Idempotent per gameweek: rerunning before the same deadline overwrites.
     """
-    import json
+    from .data.current import deadlines
+    from .data.snapshots import write_snapshot
 
     config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
     payload = client.bootstrap_static(force=True)
+    # Difficulty ratings too: FPL revises them later, including for played fixtures.
+    fixtures = client.fixtures(force=True)
     gw = args.gw or client.next_gw()
     if gw is None:
         print("no upcoming gameweek to snapshot", file=sys.stderr)
         return 1
 
-    out_dir = config.data_dir / "snapshots"
-    out_dir.mkdir(parents=True, exist_ok=True)
     stamp = pd.Timestamp.now(tz="UTC")
-    path = out_dir / f"bootstrap_gw{gw:02d}.json"
+    deadline = deadlines(client).get(int(gw))
+    try:
+        path = write_snapshot(payload, gw, config, deadline=deadline, captured_at=stamp, fixtures=fixtures)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
 
-    # Keep only the per-player fields the model can use, plus enough to join.
-    keep = [
-        "id", "web_name", "team", "element_type", "now_cost", "ep_next", "ep_this",
-        "chance_of_playing_next_round", "chance_of_playing_this_round", "status", "news",
-        "penalties_order", "corners_and_indirect_freekicks_order", "form",
-        "selected_by_percent", "transfers_in_event", "transfers_out_event",
-    ]
-    players = [{k: p.get(k) for k in keep} for p in payload["elements"]]
-    path.write_text(
-        json.dumps({"gameweek": gw, "captured_at": stamp.isoformat(), "players": players}),
-        encoding="utf-8",
-    )
-    flagged = sum(1 for p in players if p["chance_of_playing_next_round"] is not None)
+    players = payload["elements"]
+    flagged = sum(1 for p in players if p.get("chance_of_playing_next_round") is not None)
     print(f"gameweek  : {gw}")
     print(f"captured  : {stamp.strftime('%a %d %b %H:%M UTC')}")
+    if deadline is not None:
+        hours = (deadline - stamp).total_seconds() / 3600
+        ahead = f"{hours / 24:.0f} days" if hours >= 48 else f"{hours:.0f}h"
+        print(f"deadline  : {deadline.strftime('%a %d %b %H:%M UTC')}  ({ahead} from now)")
     print(f"players   : {len(players)}  ({flagged} carrying an availability flag)")
+    print(f"fixtures  : {len(fixtures)}  (difficulty ratings as they stand)")
     print(f"written   : {path}")
     print("\nRun this before every deadline. A scheduled task on Friday afternoons works.")
     return 0

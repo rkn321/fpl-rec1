@@ -199,10 +199,10 @@ under `data/cache/`, so later runs are fast.
 
 `predict` writes `data/processed/expected_points_gw{N}.csv` and prints the top of
 the list.
+### Capturing training data (recommended)
 
-### Capturing training data (optional)
-
-Not needed to use the page. This is for improving next season's model:
+Not needed to use the page, but it is what lets this season's results train
+the model properly:
 
 ```powershell
 .\fpl snapshot
@@ -210,9 +210,22 @@ Not needed to use the page. This is for improving next season's model:
 
 Stores the live player data — FPL's expected points, availability flags,
 set-piece orders — labelled by gameweek under `data/snapshots/`. These inputs
-are only ever *current* in the API; capturing them before each deadline is what
-makes them trainable next season without the "was this scraped after the match"
-doubt.
+are only ever *current* in the API: the per-player history it serves has no
+expected-points column, so without a snapshot every played gameweek of the
+current season trains with `xP` missing — and `xP` is the model's largest
+input. Once a gameweek has a snapshot, its played rows carry the `xP` and
+set-piece orders as they stood at that deadline. The command refuses to write a
+snapshot after its gameweek's deadline, and the loader ignores one, so nothing
+in these rows can have been influenced by the matches.
+
+It also keeps FPL's fixture difficulty ratings as they stood. FPL revises those
+during the season and rewrites them for matches already played, so a gameweek
+rebuilt later sees every fixture rated with hindsight: rebuilding GW5 of
+2026-27 two weeks on moved predictions by up to 1.8 points from what the page
+had shown, and Emersonn from 6.14 to 5.80. With the deadline's ratings and
+set-piece orders put back, the rebuild matches the page to within 0.05 for 656
+of 659 players. That is what `fpl review` relies on for a gameweek with no
+stored prediction.
 
 It labels the capture by the *upcoming* gameweek and overwrites, so the
 simplest schedule is also the right one: run it regularly, and the last run
@@ -336,6 +349,7 @@ src/
     fpl_api.py            official API client — disk cache, retry/backoff
     historical.py         vaastav season CSVs
     current.py            the in-progress season, live
+    snapshots.py          pre-deadline captures, and the deadline state a rebuild replays
     understat.py          Phase 4 — stub with design notes
     odds.py               Phase 4 — stub
     injuries.py           Phase 4 — stub
@@ -367,6 +381,7 @@ data/                     parquet + API cache (gitignored)
 | FPL API `fixtures/` | fixture list + difficulty ratings | hourly |
 | FPL API `element-summary/{id}/` | current-season per-gameweek history | hourly |
 | [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League) | historical seasons, with Understat xG merged | once per season (immutable) |
+| `fpl snapshot` (`bootstrap-static/` + `fixtures/`) | pre-deadline `xP`, prices, availability, set-piece orders, difficulty ratings | before each deadline |
 
 Everything is cached to `data/cache/`. TTLs are per endpoint in `config.yaml`;
 the client retries with exponential backoff and jitter, honours `Retry-After`,
@@ -557,8 +572,11 @@ a 90% chance of playing by a model that only knows he started last month. On the
 GW5 predictions this changed 139 of 258 flagged players; Dean Henderson went
 from 52% (recent minutes) to 0% (injured), and from 1.9 expected points to 0.
 
-`fpl snapshot` stores the live player data before a deadline, so that next
-season these inputs can be trained on properly rather than approximated.
+`fpl snapshot` stores the live player data before a deadline, and the played
+rows of any gameweek with a snapshot train on those stored values — `xP` where
+there would otherwise be none, and the set-piece orders as they stood then
+rather than as they stand today. From the first snapshot on, the current
+season is no longer trained blind on its largest input.
 
 ### The residual doubt
 
@@ -570,10 +588,11 @@ not zeroed — which is what FPL's *pre-deadline* `chance_of_playing` flags look
 like, and not what a column computed after the whistle would look like.
 
 That is evidence, not proof. `xP` correlates 0.67 with same-gameweek minutes,
-and some of that could be knowledge rather than forecasting. The way to settle
-it is to snapshot `bootstrap-static`'s `ep_next` before each deadline from here
-on, building a training set that is provably pre-deadline, and re-run this
-comparison against it.
+and some of that could be knowledge rather than forecasting. The snapshots
+settle it going forward: `ep_next` captured before each deadline is provably
+pre-deadline, and it is what the current season's rows now train on. Once a
+season of them exists, this comparison can be re-run against a column with no
+doubt attached.
 
 ### Measured and not adopted
 

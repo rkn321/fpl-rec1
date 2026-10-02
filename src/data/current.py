@@ -18,6 +18,7 @@ import pandas as pd
 
 from .fpl_api import ELEMENT_TYPE_TO_POSITION, FPLClient
 from .schema import finalise_frame
+from .snapshots import apply_snapshots, load_snapshots
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,12 @@ def _fixture_context(client: FPLClient) -> pd.DataFrame:
     fx = client.fixtures_frame()
     cols = ["id", "event", "team_h", "team_a", "team_h_difficulty", "team_a_difficulty", "kickoff_time"]
     return fx[cols].rename(columns={"id": "fixture_id"})
+
+
+def deadlines(client: FPLClient) -> dict[int, pd.Timestamp]:
+    """Gameweek -> deadline, UTC."""
+    ev = client.events()
+    return {int(g): pd.Timestamp(d) for g, d in zip(ev["id"], ev["deadline_time"])}
 
 
 def _attach_fixture_context(df: pd.DataFrame, ctx: pd.DataFrame) -> pd.DataFrame:
@@ -78,6 +85,11 @@ def played_frame(client: FPLClient, season: str, force: bool = False) -> pd.Data
         columns={"id": "player_id", "corners_and_indirect_freekicks_order": "setpiece_order"}
     )
     df = df.merge(roles, on="player_id", how="left", validate="many_to_one")
+
+    # `element-summary` has no expected-points history, and the roles above are
+    # today's. Where a pre-deadline snapshot exists for the gameweek, it
+    # supplies `xP` and the roles as they stood at that deadline.
+    df = apply_snapshots(df, load_snapshots(client.config, deadlines=deadlines(client)))
 
     home = df["was_home"]
     df["team_goals_for"] = df["team_h_score"].where(home, df["team_a_score"])
