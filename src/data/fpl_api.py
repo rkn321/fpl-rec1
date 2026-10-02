@@ -14,6 +14,7 @@ Endpoint map (see the project brief):
     element-summary/{id}/      per-player gameweek history
     event/{gw}/live/           live per-player stat breakdown
     entry/{id}/history/        a manager's chips / transfers / ranks
+    entry/{id}/event/{gw}/picks/  a manager's XI, bench and armbands for a gameweek
 """
 
 from __future__ import annotations
@@ -196,6 +197,10 @@ class FPLClient:
 
     def entry_history(self, team_id: int, force: bool = False) -> dict[str, Any]:
         return self.get(f"entry/{int(team_id)}/history/", force=force)
+
+    def entry_picks(self, team_id: int, gw: int, force: bool = False) -> dict[str, Any]:
+        """A manager's XI, bench, armbands and auto-subs for one gameweek."""
+        return self.get(f"entry/{int(team_id)}/event/{int(gw)}/picks/", force=force)
 
     # -- tidy frames -------------------------------------------------------
     def players(self) -> pd.DataFrame:

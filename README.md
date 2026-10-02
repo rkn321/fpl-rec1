@@ -197,8 +197,13 @@ under `data/cache/`, so later runs are fast.
 .\fpl predict
 ```
 
-`predict` writes `data/processed/expected_points_gw{N}.csv` and prints the top of
-the list.
+`predict` prints the top of the list. It, the page and `serve` all predict
+through one function (`src/predict.py`), and each stores what it predicted, with
+every scoring term, as `data/processed/predictions_gw{N}.csv` — but only while
+the deadline is still ahead. A rerun before the deadline overwrites (later
+runs have later team news); a run after it never does, so the file is always
+what the model said in time to act on. That file is what `fpl review` scores.
+
 ### Capturing training data (recommended)
 
 Not needed to use the page, but it is what lets this season's results train
@@ -240,6 +245,35 @@ $repo = (Get-Location).Path; $a = New-ScheduledTaskAction -Execute "cmd.exe" -Ar
 ```
 
 To remove it: `Unregister-ScheduledTask -TaskName "FPL snapshot" -Confirm:$false`.
+
+### After a gameweek
+
+```powershell
+.\fpl review
+```
+
+How the last gameweek to kick off went, against what the model said before
+its deadline: your squad line by line (expected against actual, auto-subs and
+the armband applied by FPL's rules), the biggest over- and under-deliveries
+across the pool, the model against FPL's own figure on the same players, and
+every scoring term's predicted total against its actual one.
+
+The two summaries run season to date. Each review appends every player's
+predicted and actual terms to `data/processed/review_log.csv` (reviewing a
+gameweek again replaces its rows), and those totals — not one Saturday — are
+what a claim like "the bonus term overweights small samples" should be tested
+against.
+
+It scores the stored prediction where there is one. Where there is not (any
+gameweek before stored predictions existed) it rebuilds the model as of that
+deadline from the gameweek's snapshot, and says so; with no snapshot either, it
+refuses rather than guess. Run it after FPL marks the gameweek final — the
+morning after the last match — or it will warn that bonus can still move.
+
+By default it reviews the 15 in `config.local.yaml` as the model would have
+started them, which after a transfer is not the team you fielded. Set
+`squad.team_id` (the number in your team's URL on the FPL site) and it scores
+the real XI, bench order, armband and chip instead.
 
 ### Frontend
 
@@ -339,7 +373,9 @@ config.yaml               all settings: seasons, paths, API TTLs, windows
 config.local.yaml         your squad and bank (gitignored; see .example)
 src/
   config.py               config loading
-  cli.py                  build-features / backtest / predict / export-frontend / serve
+  cli.py                  build-features / backtest / predict / export-frontend / serve / snapshot / review
+  predict.py              the one predict path; stores each gameweek's pre-deadline prediction
+  review.py               `fpl review`: a played gameweek against that prediction, and the season log
   serve.py                local helper behind `fpl serve` — lets the page write config.local.yaml
   pipeline.py             assemble + store the feature frame
   metrics.py              MAE, RMSE, Spearman (overall and within position)
@@ -369,7 +405,7 @@ src/
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
-tests/                    72 tests; leakage checks on synthetic and real data
+tests/                    140 tests; leakage checks on synthetic and real data
 data/                     parquet + API cache (gitignored)
 ```
 
@@ -382,6 +418,7 @@ data/                     parquet + API cache (gitignored)
 | FPL API `element-summary/{id}/` | current-season per-gameweek history | hourly |
 | [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League) | historical seasons, with Understat xG merged | once per season (immutable) |
 | `fpl snapshot` (`bootstrap-static/` + `fixtures/`) | pre-deadline `xP`, prices, availability, set-piece orders, difficulty ratings | before each deadline |
+| FPL API `event/{gw}/live/` | actual points by scoring term, for `fpl review` | five minutes |
 
 Everything is cached to `data/cache/`. TTLs are per endpoint in `config.yaml`;
 the client retries with exponential backoff and jitter, honours `Retry-After`,

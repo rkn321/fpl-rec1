@@ -6,6 +6,7 @@
     python -m src.cli export-frontend   # build the squad / transfer page
     python -m src.cli serve             # build it, then serve it so it can save your squad
     python -m src.cli snapshot          # capture live inputs before a deadline
+    python -m src.cli review            # how the last gameweek went against the prediction
 
 `export-frontend` writes one self-contained HTML file with the player pool
 baked into it, and the page does the rest in the browser — so "running the
@@ -27,7 +28,7 @@ import pandas as pd
 from . import pipeline
 from .config import load_config
 from .data.fpl_api import FPLClient
-from .evaluate import run_backtest, training_window
+from .evaluate import run_backtest
 from .models.baselines import all_predictors, default_baselines
 
 
@@ -87,45 +88,26 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
 
 def cmd_predict(args: argparse.Namespace) -> int:
+    from .predict import predict_gameweek
+
     config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
-
-    gw = args.gw or client.next_gw()
-    if gw is None:
-        print("no upcoming gameweek found", file=sys.stderr)
+    try:
+        prediction = predict_gameweek(config, client, gw=args.gw, model=args.model)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
         return 1
 
-    df, feature_cols = pipeline.build(config, upcoming_gw=gw, client=client)
+    table = prediction.record.reset_index().sort_values("expected_points", ascending=False)
+    table["price"] = table["value"] / 10.0
+    cols = ["player_id", "name", "position", "expected_points", "fixtures", "price"]
 
-    target = df[(df["season"] == config.season_current) & (df["gw"] == gw)].copy()
-    if target.empty:
-        print(f"no rows for gameweek {gw}", file=sys.stderr)
-        return 1
-
-    predictor = all_predictors()[args.model]
-    predictor.fit(training_window(df, config.season_current, gw), feature_cols)
-    target["expected_points"] = predictor.predict(target)
-
-    # A double gameweek means two fixtures; FPL pays you for both.
-    per_player = (
-        target.groupby(["player_id", "name", "position"], observed=True)
-        .agg(
-            expected_points=("expected_points", "sum"),
-            fixtures=("fixture_id", "nunique"),
-            price=("value", "first"),
-        )
-        .reset_index()
-        .sort_values("expected_points", ascending=False)
-    )
-    per_player["price"] = per_player["price"] / 10.0
-
-    config.ensure_dirs()
-    out = config.processed_dir / f"expected_points_gw{gw}.csv"
-    per_player.to_csv(out, index=False)
-
-    print(f"\nExpected points — gameweek {gw} ({config.season_current}), model: {args.model}")
-    print(f"{len(per_player)} players | written to {out}\n")
-    print(per_player.head(args.top).round(2).to_string(index=False))
+    print(f"\nExpected points — gameweek {prediction.gw} ({config.season_current}), model: {args.model}")
+    if prediction.stored:
+        print(f"{len(table)} players | stored for review: {prediction.stored}\n")
+    else:
+        print(f"{len(table)} players | deadline has passed — the copy stored before it is kept\n")
+    print(table[cols].head(args.top).round(2).to_string(index=False))
     return 0
 
 
@@ -274,7 +256,28 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review(args: argparse.Namespace) -> int:
+    """Score a played gameweek against what the model said before its deadline."""
+    from . import review
+
+    config = load_config(args.config, use_local=not args.no_local)
+    client = FPLClient(config)
+    try:
+        result = review.run(config, client, gw=args.gw, model=args.model, team_id=args.team_id)
+    except (ValueError, FileNotFoundError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(review.render(result, top=args.top))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    # A Windows console defaults to cp1252, which has no ć or ğ. A player's name
+    # should come out as a "?", not as a traceback.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
     parser = argparse.ArgumentParser(prog="fpl", description=__doc__)
     parser.add_argument("--config", default=None, help="path to config.yaml")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -368,6 +371,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_snap.add_argument("--gw", type=int, default=None, help="gameweek to label it (default: next)")
     p_snap.set_defaults(func=cmd_snapshot)
+
+    p_rev = sub.add_parser(
+        "review", parents=[common],
+        help="how a played gameweek went against what the model said before its deadline",
+    )
+    p_rev.add_argument("--gw", type=int, default=None, help="gameweek (default: the latest that has kicked off)")
+    p_rev.add_argument(
+        "--team-id", type=int, default=None,
+        help="your FPL team id, to review the XI you actually fielded (default: squad.team_id)",
+    )
+    p_rev.add_argument(
+        "--model", default="component",
+        help="model to rebuild with when no prediction was stored (default: component)",
+    )
+    p_rev.add_argument("--top", type=int, default=8, help="players in each over/under list")
+    p_rev.set_defaults(func=cmd_review)
 
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)

@@ -25,19 +25,15 @@ import pandas as pd
 
 from .config import Config, load_config
 from .data.fpl_api import ELEMENT_TYPE_TO_POSITION, FPLAPIError, FPLClient
-from .models.baselines import Predictor, all_predictors
-from .evaluate import training_window
+from .models.combine import POINTS_TERMS
 
 log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "frontend" / "template.html"
 OUTPUT_NAME = "squad-picker.html"
 
-# The terms `combine()` returns, in the order the page shows them.
-BREAKDOWN_TERMS = (
-    "p_play", "p_60", "expected_minutes",
-    "appearance", "goals", "assists", "clean_sheet", "goals_conceded", "saves", "defcon", "bonus", "cards",
-)
+# What the page shows on hover: playing time, then the points terms.
+BREAKDOWN_TERMS = ("p_play", "p_60", "expected_minutes", *POINTS_TERMS)
 DATA_PLACEHOLDER = "/*__FPL_DATA__*/null"
 
 # Name-matching confidence. Above `_GOOD_MATCH` the squad's shape is allowed to
@@ -370,7 +366,7 @@ def build_player_data(
     horizon: int = 5,
 ) -> dict[str, Any]:
     """Player pool, prices, model expected points and next-gameweek fixtures."""
-    from . import pipeline
+    from .predict import predict_gameweek
 
     config = config or load_config()
     client = client or FPLClient(config)
@@ -378,25 +374,19 @@ def build_player_data(
     if gw is None:
         raise ValueError("no upcoming gameweek found")
 
-    frame, feature_cols = pipeline.build(config, upcoming_gw=gw, client=client)
-    target = frame[(frame["season"] == config.season_current) & (frame["gw"] == gw)].copy()
+    # Also stores the prediction while the deadline is still ahead, so that
+    # `fpl review` can later score exactly what this page showed.
+    prediction = predict_gameweek(config, client, gw=gw, model=model)
+    record = prediction.record
 
-    predictor: Predictor = all_predictors()[model]
-    predictor.fit(training_window(frame, config.season_current, gw), feature_cols)
-    target["ep"] = predictor.predict(target)
-
-    # Sum across fixtures: a double gameweek pays for both.
-    ep = target.groupby("player_id", observed=True)["ep"].sum()
+    # Summed across fixtures: a double gameweek pays for both.
+    ep = record["expected_points"]
 
     # The same figure decomposed into the scoring terms it was built from, so
-    # the page can answer "why is he rated that" for any player. Points terms
-    # sum across a double; the chance of playing does not.
-    why: pd.DataFrame | None = None
-    if hasattr(predictor, "predict_breakdown"):
-        bd = predictor.predict_breakdown(target).assign(player_id=target["player_id"].to_numpy())
-        agg = {t: "sum" for t in BREAKDOWN_TERMS}
-        agg.update({"p_play": "max", "p_60": "max"})
-        why = bd.groupby("player_id", observed=True).agg(agg)
+    # the page can answer "why is he rated that" for any player.
+    why: pd.DataFrame | None = (
+        record[list(BREAKDOWN_TERMS)] if set(BREAKDOWN_TERMS) <= set(record.columns) else None
+    )
 
     players = client.players()
     teams = client.teams().set_index("id")["short_name"].to_dict()

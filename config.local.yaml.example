@@ -31,3 +31,7 @@ squad:
 
   bank: 0.4
   free_transfers: 0
+
+  # Optional: your FPL team id (from the URL on fantasy.premierleague.com),
+  # so `fpl review` can score the team you actually fielded.
+  # team_id: 1234567

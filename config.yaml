@@ -71,6 +71,12 @@ squad:
   # Gameweeks of fixtures to load for the planning view.
   horizon: 5
 
+  # Your FPL team id — the number in the URL when you view your team on
+  # fantasy.premierleague.com (…/entry/1234567/…). Optional. With it, `fpl
+  # review` scores the XI, captain and bench you actually fielded; without it,
+  # it reviews the 15 above as the model would have started them.
+  team_id: null
+
 evaluate:
   # The season a bare `fpl backtest` tests. Not simply the latest one: the
   # historical xP scrape for 2025-26 is zero for 27 of its 38 gameweeks, so

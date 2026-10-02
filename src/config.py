@@ -89,6 +89,12 @@ class Config:
         horizon = self.squad.get("horizon")
         return None if horizon is None else int(horizon)
 
+    @property
+    def squad_team_id(self) -> int | None:
+        """Your FPL team id, so `fpl review` can score the XI you actually fielded."""
+        team_id = self.squad.get("team_id")
+        return None if team_id is None else int(team_id)
+
     # -- paths -------------------------------------------------------------
     def _path(self, key: str) -> Path:
         p = Path(self.raw["paths"][key])

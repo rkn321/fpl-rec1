@@ -38,6 +38,13 @@ from .scoring import (
     YELLOW_CARD_POINTS,
 )
 
+# The points terms `combine()` returns, in scoring-rule order. Everything that
+# decomposes an expected-points figure — the page's hover, the stored
+# predictions, the post-gameweek review — reads this list rather than its own.
+POINTS_TERMS: tuple[str, ...] = (
+    "appearance", "goals", "assists", "clean_sheet", "goals_conceded", "saves", "defcon", "bonus", "cards",
+)
+
 
 def combine(
     frame: pd.DataFrame,
