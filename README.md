@@ -234,11 +234,34 @@ stored prediction.
 
 It labels the capture by the *upcoming* gameweek and overwrites, so the
 simplest schedule is also the right one: run it regularly, and the last run
-before each deadline is automatically the freshest capture. This registers a
-Windows scheduled task that runs it every six hours, catching up on wake if the
+before each deadline is automatically the freshest capture.
+
+**In the cloud.** A missed deadline is a gameweek that trains without `xP`
+for good, so capturing cannot depend on a laptop being awake.
+`.github/workflows/snapshot.yml` runs `fpl snapshot` on GitHub Actions every
+six hours and keeps each capture as a private workflow artifact named for its
+gameweek. Artifacts expire after 90 days, so they are a way home, not a place
+to keep things: `fpl fetch-snapshots` downloads any cloud capture newer than
+the one in `data/snapshots/`, and `snapshot`, `serve`, `predict`,
+`export-frontend` and `review` all do the same quietly before they start.
+Running the project at least once every three months is enough to lose
+nothing. Downloading artifacts needs a signed-in GitHub CLI, even for a public
+repository — once:
+
+```powershell
+gh auth login
+```
+
+The schedule runs from the default branch only, and GitHub pauses schedules
+in a public repository after 60 days without a commit; it emails first, and
+the Actions tab re-enables it.
+
+**On this machine, too.** Optional now, but a second source costs nothing, and
+it is what keeps fetching while the project is idle. This registers a Windows
+scheduled task that runs `fpl snapshot` every six hours — capturing, then
+fetching whatever the cloud has that is newer — catching up on wake if the
 laptop was asleep, with output in `data\snapshots\snapshot.log` (paste into
-PowerShell from inside the project folder — one machine's captures are all the
-project needs):
+PowerShell from inside the project folder):
 
 ```powershell
 $repo = (Get-Location).Path; $a = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c call fpl.cmd snapshot >> data\snapshots\snapshot.log 2>&1" -WorkingDirectory $repo; $t = New-ScheduledTaskTrigger -Daily -At "00:00"; $t.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 59)).Repetition; $s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew; Register-ScheduledTask -TaskName "FPL snapshot" -Action $a -Trigger $t -Settings $s -Force | Out-Null; Start-ScheduledTask -TaskName "FPL snapshot"; "registered and run once"
@@ -386,6 +409,7 @@ src/
     historical.py         vaastav season CSVs
     current.py            the in-progress season, live
     snapshots.py          pre-deadline captures, and the deadline state a rebuild replays
+    cloud_snapshots.py    downloads the captures GitHub Actions takes
     understat.py          Phase 4 — stub with design notes
     odds.py               Phase 4 — stub
     injuries.py           Phase 4 — stub
@@ -405,7 +429,8 @@ src/
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
-tests/                    140 tests; leakage checks on synthetic and real data
+tests/                    149 tests; leakage checks on synthetic and real data
+.github/workflows/        snapshot.yml — captures before every deadline, laptop or not
 data/                     parquet + API cache (gitignored)
 ```
 
@@ -417,7 +442,7 @@ data/                     parquet + API cache (gitignored)
 | FPL API `fixtures/` | fixture list + difficulty ratings | hourly |
 | FPL API `element-summary/{id}/` | current-season per-gameweek history | hourly |
 | [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League) | historical seasons, with Understat xG merged | once per season (immutable) |
-| `fpl snapshot` (`bootstrap-static/` + `fixtures/`) | pre-deadline `xP`, prices, availability, set-piece orders, difficulty ratings | before each deadline |
+| `fpl snapshot` (`bootstrap-static/` + `fixtures/`) | pre-deadline `xP`, prices, availability, set-piece orders, difficulty ratings | every six hours, on GitHub Actions and optionally locally |
 | FPL API `event/{gw}/live/` | actual points by scoring term, for `fpl review` | five minutes |
 
 Everything is cached to `data/cache/`. TTLs are per endpoint in `config.yaml`;

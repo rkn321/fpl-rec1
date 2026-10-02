@@ -1,0 +1,62 @@
+# Capture FPL's live player data and fixture ratings before every deadline,
+# whether or not a laptop is awake. See src/data/snapshots.py for why these
+# captures matter and src/data/cloud_snapshots.py for how they come home:
+# `fpl fetch-snapshots` (and `fpl snapshot`, `serve`, `predict`) download any
+# capture newer than the local one. Artifacts expire after 90 days, so they
+# are a delivery route, not storage.
+#
+# Every six hours, so the last run before any deadline is at most six hours
+# old, at :17 past to stay clear of the top-of-the-hour queue. Each run
+# labels its capture by the upcoming gameweek; a run after a deadline
+# captures the next one, never the one just locked.
+#
+# GitHub pauses schedules in a public repository after 60 days without a
+# commit. It emails first; re-enable from the Actions tab or push anything.
+name: snapshot
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Capture
+        id: capture
+        run: |
+          python -m src.cli snapshot --no-local --no-fetch
+          shopt -s nullglob
+          files=(data/snapshots/bootstrap_gw*.json)
+          if [ ${#files[@]} -eq 1 ]; then
+            gw=$(basename "${files[0]}" .json | sed 's/^bootstrap_gw//')
+            echo "name=snapshot-gw${gw}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Store
+        if: steps.capture.outputs.name != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.capture.outputs.name }}
+          path: data/snapshots/bootstrap_gw*.json
+          retention-days: 90
+          if-no-files-found: error

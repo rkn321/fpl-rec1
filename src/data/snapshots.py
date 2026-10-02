@@ -334,3 +334,35 @@ def deadline_state(
     else:
         out.loc[in_season] = apply_fixture_ratings(out.loc[in_season], ratings)
     return out, notes
+
+
+def local_captured_at(config: Config, gw: int) -> pd.Timestamp | None:
+    """When the snapshot on disk for `gw` was taken, or None if there is none."""
+    path = snapshot_path(config, gw)
+    read = _read_one(path) if path.exists() else None
+    return None if read is None else read[1]
+
+
+def keep_if_newer(config: Config, raw: bytes) -> int | None:
+    """Store a snapshot captured elsewhere if it is newer than the one on disk.
+
+    The same rule as rerunning `fpl snapshot` before a deadline: for each
+    gameweek the latest pre-deadline capture wins, because it has the latest
+    team news. Returns the gameweek written, or None if the local copy was
+    already as new.
+    """
+    body = json.loads(raw.decode("utf-8"))
+    gw = int(body["gameweek"])
+    captured = pd.Timestamp(body["captured_at"])
+    if captured.tzinfo is None:
+        captured = captured.tz_localize("UTC")
+    if not isinstance(body.get("players"), list) or not body["players"]:
+        raise ValueError(f"snapshot for gameweek {gw} has no players")
+
+    local = local_captured_at(config, gw)
+    if local is not None and local >= captured:
+        return None
+    path = snapshot_path(config, gw)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(body), encoding="utf-8")
+    return gw

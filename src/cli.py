@@ -6,6 +6,7 @@
     python -m src.cli export-frontend   # build the squad / transfer page
     python -m src.cli serve             # build it, then serve it so it can save your squad
     python -m src.cli snapshot          # capture live inputs before a deadline
+    python -m src.cli fetch-snapshots   # bring home the captures GitHub Actions took
     python -m src.cli review            # how the last gameweek went against the prediction
 
 `export-frontend` writes one self-contained HTML file with the player pool
@@ -37,6 +38,20 @@ def _setup_logging(verbose: bool) -> None:
         level=logging.INFO if verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+
+def _fetch_cloud_snapshots(config, always: bool = False) -> bool:
+    """Bring home captures GitHub Actions took; quiet when there is nothing to say.
+
+    Returns False only when the fetch failed, so a command whose whole job it
+    is can exit non-zero.
+    """
+    from .data.cloud_snapshots import fetch
+
+    result = fetch(config)
+    if always or result.error or result.stored:
+        print(f"snapshots : {result.summary()}")
+    return result.error is None
 
 
 def cmd_build_features(args: argparse.Namespace) -> int:
@@ -92,6 +107,7 @@ def cmd_predict(args: argparse.Namespace) -> int:
 
     config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
+    _fetch_cloud_snapshots(config)
     try:
         prediction = predict_gameweek(config, client, gw=args.gw, model=args.model)
     except ValueError as exc:
@@ -117,6 +133,7 @@ def cmd_export_frontend(args: argparse.Namespace) -> int:
     config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
     gw = args.gw or client.next_gw()
+    _fetch_cloud_snapshots(config)
 
     # Flags win; otherwise fall back to whatever `config.yaml` remembers, so the
     # common case is a bare `export-frontend` with no arguments at all.
@@ -193,6 +210,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     else:
         client = FPLClient(config)
         gw = args.gw or client.next_gw()
+        _fetch_cloud_snapshots(config)
         page = frontend.export(
             config=config, client=client, gw=gw, model=args.model,
             squad=config.squad_players or None, bank=config.squad_bank,
@@ -230,8 +248,8 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     fixtures = client.fixtures(force=True)
     gw = args.gw or client.next_gw()
     if gw is None:
-        print("no upcoming gameweek to snapshot", file=sys.stderr)
-        return 1
+        print("no upcoming gameweek to snapshot — the season is over")
+        return 0
 
     stamp = pd.Timestamp.now(tz="UTC")
     deadline = deadlines(client).get(int(gw))
@@ -252,8 +270,15 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     print(f"players   : {len(players)}  ({flagged} carrying an availability flag)")
     print(f"fixtures  : {len(fixtures)}  (difficulty ratings as they stand)")
     print(f"written   : {path}")
-    print("\nRun this before every deadline. A scheduled task on Friday afternoons works.")
+    if not args.no_fetch:
+        _fetch_cloud_snapshots(config, always=True)
     return 0
+
+
+def cmd_fetch_snapshots(args: argparse.Namespace) -> int:
+    """Download the captures GitHub Actions has taken since the last fetch."""
+    config = load_config(args.config, use_local=not args.no_local)
+    return 0 if _fetch_cloud_snapshots(config, always=True) else 1
 
 
 def cmd_review(args: argparse.Namespace) -> int:
@@ -262,6 +287,7 @@ def cmd_review(args: argparse.Namespace) -> int:
 
     config = load_config(args.config, use_local=not args.no_local)
     client = FPLClient(config)
+    _fetch_cloud_snapshots(config)
     try:
         result = review.run(config, client, gw=args.gw, model=args.model, team_id=args.team_id)
     except (ValueError, FileNotFoundError) as exc:
@@ -370,7 +396,17 @@ def main(argv: list[str] | None = None) -> int:
         help="store the live player data for this gameweek, so next season trains on clean inputs",
     )
     p_snap.add_argument("--gw", type=int, default=None, help="gameweek to label it (default: next)")
+    p_snap.add_argument(
+        "--no-fetch", action="store_true",
+        help="do not also download newer captures from GitHub Actions (how the cloud run itself calls it)",
+    )
     p_snap.set_defaults(func=cmd_snapshot)
+
+    p_fetch = sub.add_parser(
+        "fetch-snapshots", parents=[common],
+        help="download snapshots GitHub Actions captured that are newer than the ones here",
+    )
+    p_fetch.set_defaults(func=cmd_fetch_snapshots)
 
     p_rev = sub.add_parser(
         "review", parents=[common],
