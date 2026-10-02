@@ -651,6 +651,29 @@ does not hold — within a form band, static difficulty still separates 1.22 fro
 already fold in whatever form matters. The page keeps the measured difficulty
 multipliers.
 
+**Shrinking the bonus term for short samples.** Prompted by a promoted-side
+forward handed 1.93 expected bonus off four appearances, then blanking while
+the striker the model ranked fifth in the same fixture scored. Checked before
+changing anything, by fitting the bonus model walk-forward on early-season
+gameweeks (5–10) of all four seasons with `xP` present and comparing predicted
+to actual bonus by sample size. There is nothing to shrink: players with three
+or four prior appearances predicted 1.75+ bonus averaged 2.36 predicted and
+2.36 actual (n=47), those with seven to nine 2.37 and 2.47, and the regression
+slope of actual on predicted BPS sits at 0.9–1.0 in every sample-size band. The
+model's top-ranked player in a fixture blanks 9% of the time whether he has four
+games behind him or twenty; the forward was one of the 9%. Nor was his short
+record what the model was reading: of his 25 predicted BPS, 11.8 came from
+FPL's own `xP` of 6.0 and under 3 from his own BPS history. A shrinkage factor
+would halve a figure that is already right on average. Not adopted.
+
+The check did surface the term's real weakness, which is different: the
+rank-to-bonus table is built in-sample, and it holds only as long as the
+out-of-sample ranking is as good as the in-sample one. On the 2025-26 gameweeks
+where `xP` is missing the BPS ranking degrades (correlation 0.3 against 0.75)
+and the table promises 2.2 for first place while delivering 1.2. With `xP`
+present the two agree (2.34 against 2.29). Building the table out-of-fold would
+make it honest when the inputs are thin; it would not have changed this call.
+
 ## Running the tests
 
 ```bash
