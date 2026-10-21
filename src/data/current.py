@@ -88,7 +88,7 @@ def played_frame(client: FPLClient, season: str, force: bool = False) -> pd.Data
 
     # `element-summary` has no expected-points history, and the roles above are
     # today's. Where a pre-deadline snapshot exists for the gameweek, it
-    # supplies `xP` and the roles as they stood at that deadline.
+    # supplies FPL's `xP` and the roles as they stood at that deadline.
     df = apply_snapshots(df, load_snapshots(client.config, deadlines=deadlines(client)))
 
     home = df["was_home"]

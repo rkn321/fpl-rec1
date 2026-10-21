@@ -119,6 +119,9 @@ def cmd_predict(args: argparse.Namespace) -> int:
     cols = ["player_id", "name", "position", "expected_points", "fixtures", "price"]
 
     print(f"\nExpected points — gameweek {prediction.gw} ({config.season_current}), model: {args.model}")
+    if not prediction.odds_priced:
+        print(f"odds: not published for GW{prediction.gw} yet, so this uses the no-odds model — "
+              "rebuild once they are out (usually two or three days before the deadline)")
     if prediction.stored:
         print(f"{len(table)} players | stored for review: {prediction.stored}\n")
     else:

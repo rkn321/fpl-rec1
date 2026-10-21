@@ -12,9 +12,10 @@ import logging
 import pandas as pd
 
 from .config import Config, load_config
+from .data import odds
 from .data.current import played_frame, upcoming_frame
 from .data.fpl_api import FPLClient
-from .data.historical import load_seasons
+from .data.historical import VaastavLoader, load_seasons
 from .features.build import build_player_gameweek
 
 log = logging.getLogger(__name__)
@@ -50,7 +51,23 @@ def load_raw(
             log.info("gameweek %d: %d prediction rows", upcoming_gw, len(future))
             frames.append(future)
 
-    return pd.concat(frames, ignore_index=True)
+    raw = pd.concat(frames, ignore_index=True)
+    return odds.attach_all(raw, config, team_ids(config, raw, client), config.season_current)
+
+
+def team_ids(config: Config, raw: pd.DataFrame, client: FPLClient | None) -> dict[str, dict[str, int]]:
+    """season -> {FPL team name: that season's id}, for joining anything keyed by club name."""
+    loader = VaastavLoader(config)
+    out: dict[str, dict[str, int]] = {}
+    for season in sorted(raw["season"].dropna().unique()):
+        if season == config.season_current:
+            if client is None:
+                continue
+            teams = client.teams()
+        else:
+            teams = loader.teams(season)
+        out[season] = {str(n): int(i) for n, i in zip(teams["name"], teams["id"])}
+    return out
 
 
 def build(

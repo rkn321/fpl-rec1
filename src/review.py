@@ -33,7 +33,7 @@ from .data.snapshots import deadline_state
 from .evaluate import playing_filter
 from .metrics import ACTUAL, PRED, mae, spearman_by_position
 from .models.combine import POINTS_TERMS
-from .predict import PREDICTIONS_NAME, fit_predict, load_predictions
+from .predict import MODEL_CACHE, PREDICTIONS_NAME, fit_predict, load_predictions
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +109,8 @@ def reconstruct_predictions(
         raw, windows=list(config.features["windows"]),
         expanding=bool(config.features.get("expanding", True)),
     )
-    return fit_predict(frame, feature_cols, season, gw, model=model), notes
+    record = fit_predict(frame, feature_cols, season, gw, model=model, cache_dir=config.cache_dir / MODEL_CACHE)
+    return record, notes
 
 
 # -- what happened ----------------------------------------------------------------

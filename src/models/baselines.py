@@ -42,10 +42,11 @@ class Last3Mean(Predictor):
 class FPLExpectedPoints(Predictor):
     """Baseline (b): the game's own expected-points column.
 
-    Caveat worth keeping in view: in the vaastav dataset this column is scraped
-    around the gameweek rather than strictly at the deadline (brief §6.1), so it
-    may be a slightly optimistic bar rather than a purely pre-deadline one. It
-    is used only as a baseline, never as a feature.
+    Not a fair bar on historical seasons: the vaastav column was recorded after
+    the matches (see `src/data/schema.py`), so there it knows the result. It is
+    a fair one only where `xP` comes from `fpl snapshot` — the current season,
+    from GW5 of 2026-27 on — and `fpl review` scores the model against exactly
+    that. Never a feature.
     """
 
     name = "fpl_ep"

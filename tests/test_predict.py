@@ -133,3 +133,97 @@ def test_fit_predict_refuses_a_gameweek_with_no_rows(synthetic: pd.DataFrame) ->
     frame, features = build_features(synthetic)
     with pytest.raises(ValueError, match="no rows for gameweek 99"):
         fit_predict(frame, features, "2099-00", 99)
+
+
+# -- the fit cache -------------------------------------------------------------------
+
+class CountingPredictor:
+    """Counts fits across instances; predicts each player's number of training rows."""
+
+    fits = 0
+    last_features: list[str] = []
+
+    def fit(self, train, feature_cols):
+        CountingPredictor.fits += 1
+        CountingPredictor.last_features = list(feature_cols)
+        self.rows = len(train)
+        return self
+
+    def predict(self, target):
+        return np.full(len(target), float(self.rows))
+
+
+@pytest.fixture
+def counting(monkeypatch):
+    import src.predict as predict_module
+
+    CountingPredictor.fits = 0
+    monkeypatch.setattr(predict_module, "all_predictors", lambda: {"counting": CountingPredictor()})
+    return CountingPredictor
+
+
+def test_an_identical_fit_comes_from_the_cache(synthetic, counting, tmp_path) -> None:
+    frame, features = build_features(synthetic)
+    first = fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    second = fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    assert counting.fits == 1
+    pd.testing.assert_frame_equal(first, second)
+
+
+def test_changed_training_rows_refit(synthetic, counting, tmp_path) -> None:
+    frame, features = build_features(synthetic)
+    fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+
+    revised = frame.copy()
+    earlier = revised.index[revised["gw"] < 8][0]
+    revised.loc[earlier, "total_points"] += 1   # FPL corrects a past score
+    fit_predict(revised, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    assert counting.fits == 2
+
+    # The next gameweek's training window is different rows again.
+    fit_predict(frame, features, "2099-00", 9, model="counting", cache_dir=tmp_path)
+    assert counting.fits == 3
+
+
+def test_a_corrupt_cached_model_is_refitted_over(synthetic, counting, tmp_path) -> None:
+    frame, features = build_features(synthetic)
+    fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    (cached,) = tmp_path.glob("counting-*.pkl")
+    cached.write_bytes(b"half a pickle")
+
+    record = fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    assert counting.fits == 2 and record["expected_points"].gt(0).all()
+    fit_predict(frame, features, "2099-00", 8, model="counting", cache_dir=tmp_path)
+    assert counting.fits == 2, "and the rewritten file is good"
+
+
+def test_the_cache_keeps_only_the_latest_fits(synthetic, counting, tmp_path) -> None:
+    from src.predict import KEEP_CACHED
+
+    frame, features = build_features(synthetic)
+    for gw in range(2, 2 + KEEP_CACHED + 2):
+        fit_predict(frame, features, "2099-00", gw, model="counting", cache_dir=tmp_path)
+    assert len(list(tmp_path.glob("*.pkl"))) == KEEP_CACHED
+
+
+def test_no_cache_dir_always_fits(synthetic, counting) -> None:
+    frame, features = build_features(synthetic)
+    fit_predict(frame, features, "2099-00", 8, model="counting")
+    fit_predict(frame, features, "2099-00", 8, model="counting")
+    assert counting.fits == 2
+
+
+def test_a_week_whose_odds_are_not_out_uses_the_no_odds_fit(synthetic, counting) -> None:
+    frame, features = build_features(synthetic)
+    frame = frame.assign(odds_team_goals=1.4, odds_opp_goals=1.1)
+    features = features + ["odds_team_goals", "odds_opp_goals"]
+
+    fit_predict(frame, features, "2099-00", 8, model="counting")
+    assert "odds_team_goals" in counting.last_features, "priced week: the odds are used"
+
+    unpriced = frame.copy()
+    unpriced.loc[unpriced["gw"] == 8, ["odds_team_goals", "odds_opp_goals"]] = np.nan
+    fit_predict(unpriced, features, "2099-00", 8, model="counting")
+    assert not [f for f in counting.last_features if f.startswith("odds_")], (
+        "a fit with the odds would read their absence as a signal"
+    )

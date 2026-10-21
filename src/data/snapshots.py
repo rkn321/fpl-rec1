@@ -1,17 +1,18 @@
 """Pre-deadline snapshots of `bootstrap-static`, and how they reach training.
 
-The model's most valuable inputs — FPL's own expected points (`ep_next`), the
-availability flag, the set-piece orders — exist in the API only as *current*
-values. The historical dataset carries `xP` for some gameweeks and not others
-(27 of 38 are missing in 2025-26), and the live season's played rows carry none
-at all, because `element-summary` has no expected-points history. Left alone,
-the model trains on the season in progress blind to its most important feature
-— and those are the only rows scored under this season's rules.
+Several pre-deadline inputs — the availability flag, the set-piece orders,
+prices, FPL's own expected points (`ep_next`) — exist in the API only as
+*current* values. Once a deadline passes they are overwritten, and the
+historical record of them cannot be trusted to be pre-deadline: the vaastav
+`xP` column turned out to be recorded after the matches (see
+`src/data/schema.py`), which is why the model no longer uses it.
 
-`fpl snapshot` fixes that going forward. Run before a deadline, it stores the
+`fpl snapshot` keeps them as they stood. Run before a deadline, it stores the
 per-player fields under the gameweek about to be played. `load_snapshots` reads
-them back and `apply_snapshots` overlays them onto that gameweek's played rows,
-so from the first snapshot on, the current season trains with `xP` present.
+them back and `apply_snapshots` overlays them onto that gameweek's played rows.
+`ep_next` captured this way is the only expected-points record that is
+pre-deadline by construction: `fpl review` scores the model against it, and a
+season of it is what a future model could fairly learn from.
 
 A snapshot also keeps FPL's fixture difficulty ratings as they stood. FPL
 revises those as the season goes and the fixtures endpoint rewrites them for

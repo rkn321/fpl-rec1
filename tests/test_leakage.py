@@ -94,18 +94,17 @@ def test_target_never_offered_as_a_feature(synthetic: pd.DataFrame) -> None:
     assert raw_schema_cols <= set(CONTEXT_COLS) | {"gw", "element_type"}
 
 
-def test_fpl_expected_points_is_used_raw_and_that_is_deliberate() -> None:
-    """`xP` is a feature for its own gameweek, unlike every other same-week column.
+def test_fpl_expected_points_never_reaches_a_model(synthetic: pd.DataFrame) -> None:
+    """`xP` is data the page shows, never a feature.
 
-    It is FPL's published pre-deadline forecast, so using it for the row it sits
-    on is legitimate — and it is the only input carrying team news. This test
-    exists so the exception stays a decision rather than becoming an accident:
-    if `xP` ever moves back to being post-match data, this is what should fail.
+    The historical column was recorded after the matches: among players on the
+    same form it already knew who was about to haul. A model trained on it
+    borrows the result, backtests far better than it can play, and over-trusts
+    the live figure. This test is what fails if it creeps back in.
     """
-    from src.data.schema import CONTEXT_COLS, OUTCOME_COLS
-
-    assert "xP" in CONTEXT_COLS, "xP is knowable before the deadline"
-    assert "xP" not in OUTCOME_COLS, "xP is not a match outcome"
+    _, feature_cols = build_features(synthetic)
+    assert "xP" not in feature_cols
+    assert not [c for c in feature_cols if c.startswith("xP")]
 
 
 def test_rolling_window_respects_the_lag(synthetic: pd.DataFrame) -> None:

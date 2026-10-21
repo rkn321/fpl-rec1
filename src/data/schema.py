@@ -37,16 +37,24 @@ CONTEXT_COLS: list[str] = [
     "team_difficulty",
     "opp_difficulty",
     "value",
-    # FPL's own expected points for the gameweek, published before the deadline.
-    # It is the one input here that carries team news — it moves with the
-    # `chance_of_playing` flags FPL sets from press conferences — which is
-    # exactly what a model built on lagged appearances cannot reconstruct.
+    # FPL's own expected points for the gameweek. Kept as data — the page shows
+    # it, the review scores the model against it, and the live and snapshot
+    # values are genuinely pre-deadline — but **never a model feature**.
     #
-    # Checked before being trusted (brief §6.1 warns it may be post-hoc). On
-    # 2024-25, where the scrape is 91% complete, players who had started the
-    # previous three matches and then did not play average 1.40 against 3.55 for
-    # those who did: reduced, not zeroed. A column computed after the match
-    # would know they were absent and put them at 0.
+    # The historical `xP` was recorded after the matches, not before the deadline.
+    # Three checks on 2022-23 to 2025-26 agree, against FPL's genuinely
+    # pre-deadline `ep_next` captured by `fpl snapshot` for 2026-27 GW5:
+    #   * a forecast tracks the past it is built from better than the week it
+    #     predicts; the snapshot does (0.71 last week, 0.53 this week by rank
+    #     correlation), the historical column does the reverse (0.62-0.66 last
+    #     week, 0.68-0.72 this week) and then falls to 0.42 a week later;
+    #   * among regular starters on the same middling form, it gave those about to
+    #     score 10+ 6.0-6.5 and those about to blank 2.3 — a forecast cannot know;
+    #   * a top XI picked on it scored 7.5-8.5 a player, on the snapshot 6.0.
+    #
+    # The earlier check — players who then missed the match averaged 1.40
+    # against 3.55 — showed it was not computed after the whistle in full; it
+    # did not show it was computed before the deadline. These do.
     "xP",
     # Set-piece duty: 1 = first choice, 2 = second, ... NA = not in the order.
     # Published in bootstrap-static and stable within a season, so it is a
@@ -54,6 +62,10 @@ CONTEXT_COLS: list[str] = [
     # in one player per side; corner duty drives a large share of assists.
     "penalties_order",
     "setpiece_order",
+    # The betting market's expected goals for and against the player's side,
+    # from pre-match odds collected at about the FPL deadline (src/data/odds.py).
+    "odds_team_goals",
+    "odds_opp_goals",
     # FPL's own availability flag, 0-100, from press conferences. It has no
     # per-gameweek history, so it is never a training feature — it is applied as
     # a ceiling on the minutes prediction for the gameweek being predicted.

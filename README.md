@@ -17,13 +17,17 @@ turns that into ranked transfer advice for a real squad.
 Built against [`fpl-model-spec.md`](fpl-model-spec.md). **Phases 1–3 are
 complete**: the data foundation, a leakage-safe feature frame, the baselines and
 walk-forward harness, and gradient-boosted component models for minutes, attack,
-defence and bonus, combined through the scoring rules. Phase 4 (Understat xG,
-odds, the injury and lineup feed) and Phase 5 (the optimiser) are scaffolded with
-design notes and not yet implemented.
+defence and bonus, combined through the scoring rules. Phase 4 is partly
+built — betting odds are in ([below](#betting-odds)) — while Understat xG, the
+injury and lineup feed and Phase 5 (the optimiser) are scaffolded with design
+notes and not yet implemented.
 
-The component model beats every baseline, including FPL's own expected points,
-on both MAE and within-position ranking — with an asterisk, since FPL's figure
-is also one of its inputs. See [what this clears](#what-this-clears-and-the-asterisk-on-it).
+The component model beats every simple baseline on MAE and within-position
+ranking, on both 2024-25 and 2025-26. It does **not** use FPL's own expected
+points: the historical record of that figure turned out to be captured after
+the matches, and an earlier version that trained on it backtested far better
+than it could ever play. See [the leak](#the-leak-in-fpls-historical-expected-points)
+and [what this clears](#what-this-clears).
 
 On top of that sits a self-contained transfer tool — see
 [Frontend](#frontend) — which scores every legal swap by its effect on your
@@ -204,6 +208,11 @@ the deadline is still ahead. A rerun before the deadline overwrites (later
 runs have later team news); a run after it never does, so the file is always
 what the model said in time to act on. That file is what `fpl review` scores.
 
+The fit itself is cached under `data/cache/models/`, keyed on the training rows,
+features, model code and LightGBM version, so only the first build after a
+gameweek finishes (or after the model changes) pays for fitting — a rebuild of
+the page otherwise skips the 45-second fit.
+
 ### Capturing training data (recommended)
 
 Not needed to use the page, but it is what lets this season's results train
@@ -214,12 +223,15 @@ the model properly:
 ```
 
 Stores the live player data — FPL's expected points, availability flags,
-set-piece orders — labelled by gameweek under `data/snapshots/`. These inputs
-are only ever *current* in the API: the per-player history it serves has no
-expected-points column, so without a snapshot every played gameweek of the
-current season trains with `xP` missing — and `xP` is the model's largest
-input. Once a gameweek has a snapshot, its played rows carry the `xP` and
-set-piece orders as they stood at that deadline. The command refuses to write a
+set-piece orders, prices — labelled by gameweek under `data/snapshots/`. These
+inputs are only ever *current* in the API and are overwritten at every
+deadline, so once a gameweek has passed there is no other record of them as
+they stood. Once a gameweek has a snapshot, its played rows carry the set-piece
+orders as they stood at that deadline. FPL's `ep_next` captured this way is the
+only expected-points record that is pre-deadline by construction — the
+historical one is not ([the leak](#the-leak-in-fpls-historical-expected-points))
+— so it is what `fpl review` scores the model against, and a season of it is
+what a future model could fairly learn from. The command refuses to write a
 snapshot after its gameweek's deadline, and the loader ignores one, so nothing
 in these rows can have been influenced by the matches.
 
@@ -236,8 +248,9 @@ It labels the capture by the *upcoming* gameweek and overwrites, so the
 simplest schedule is also the right one: run it regularly, and the last run
 before each deadline is automatically the freshest capture.
 
-**In the cloud.** A missed deadline is a gameweek that trains without `xP`
-for good, so capturing cannot depend on a laptop being awake.
+**In the cloud.** A missed deadline is a gameweek whose pre-deadline state —
+roles, ratings, FPL's own figure — is gone for good, so capturing cannot depend
+on a laptop being awake.
 `.github/workflows/snapshot.yml` runs `fpl snapshot` on GitHub Actions every
 six hours and keeps each capture as a private workflow artifact named for its
 gameweek. Artifacts expire after 90 days, so they are a way home, not a place
@@ -411,7 +424,7 @@ src/
     snapshots.py          pre-deadline captures, and the deadline state a rebuild replays
     cloud_snapshots.py    downloads the captures GitHub Actions takes
     understat.py          Phase 4 — stub with design notes
-    odds.py               Phase 4 — stub
+    odds.py               betting odds -> each side's expected goals
     injuries.py           Phase 4 — stub
   features/
     rolling.py            lagged rolling helpers
@@ -429,7 +442,7 @@ src/
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
-tests/                    149 tests; leakage checks on synthetic and real data
+tests/                    154 tests; leakage checks on synthetic and real data
 .github/workflows/        snapshot.yml — captures before every deadline, laptop or not
 data/                     parquet + API cache (gitignored)
 ```
@@ -483,7 +496,9 @@ Other gotchas from §6 that are handled:
   derived from the fixture, so mid-season transfers stay correct.
 - **Cold start reads as null, not zero.** A promoted club's players get NaN form,
   which tells a model "unknown" rather than "known to be bad".
-- **`xP` is never a feature.** It is held aside purely as baseline (b).
+- **`xP` is never a feature.** The historical column was recorded after the
+  matches ([the leak](#the-leak-in-fpls-historical-expected-points)), and
+  `tests/test_leakage.py` fails if it reaches a model.
 - **Provisional scores are not labels.** The current-season loader drops
   gameweeks the API has not marked finished, since bonus and DEFCON still move
   until 09:00 UK the day after the last match.
@@ -504,14 +519,29 @@ picked by hand. Both have since been measured against 2025-26.
 
 **Fixture difficulty.** Comparing every starter's points in a match against
 their own season average — within a player, so it is not just "good players get
-easy fixtures":
+easy fixtures" — over 2022-23 to 2025-26, by position:
 
 | FDR | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|
-| measured | 1.27 | 1.18 | 1.00 | 0.88 | 0.64 |
+| GK | 1.30 | 1.10 | 1.00 | 0.88 | 0.74 |
+| DEF | 1.39 | 1.19 | 1.00 | 0.82 | 0.64 |
+| MID | 1.27 | 1.08 | 1.00 | 0.87 | 0.75 |
+| FWD | 1.31 | 1.09 | 1.00 | 0.83 | 0.73 |
 
-A difficulty-5 fixture costs a starter about a third of their normal return.
-This is the single largest swing in the suggestions, and it is real.
+This is the single largest swing in the suggestions, and it is real: ignoring
+fixtures altogether costs 0.23 in squared error per start. It is also not the
+same for everyone. A defender's return rides on clean sheets and swings from
+1.39 to 0.64; a midfielder's runs 1.27 to 0.75. An easy fixture was worth more
+to a defender than to a midfielder in each of the four seasons.
+
+It began as one table for every position, measured on 2025-26 alone (1.27,
+1.18, 1.00, 0.88, 0.64). Held out a season at a time, the position tables beat
+it on all three seasons it was not measured on — by 0.027, 0.022 and 0.026 in
+squared error per start, about a tenth of the whole fixture effect — and lost
+by 0.004 only on 2025-26, which that table was fitted to. Each position's cell
+is pulled toward the all-position figure by weight n / (n + 300) on its number
+of starts; without that pull the difficulty-5 cells, a few hundred matches
+each, made the position tables lose in 2023-24.
 
 **How far to shrink current form toward a prior.** This one was wrong. The
 weight was set at 4 gameweeks on the reasoning that two games is too little to
@@ -533,7 +563,7 @@ haul is not projected across a horizon as though it were the norm.
 
 ## Backtest results
 
-Walk-forward over **2024-25**: train on gameweeks `< t`, predict `t`, scored per
+Walk-forward over **2024-25** and **2025-26**: train on gameweeks `< t`, predict `t`, scored per
 player-gameweek (double gameweeks summed). "Train on gameweeks `< t`" means
 prior seasons in full plus the current one up to `t` — the rule lives in one
 place, `training_window`, and the page and `predict` fit on exactly it, so the
@@ -542,75 +572,134 @@ figures shown are the figures validated here. (They did not, until GW5 of
 season, an eighth of the data.)
 
 History is four seasons, 2022-23 to 2025-26 — every season FPL has published
-xG for. The third was added while testing a cross-season prior (below), and
-turned out to be the largest single improvement measured on this model:
-against two seasons, MAE 1.297 to 1.218 and within-position Spearman 0.694 to
-0.709 on the same folds. The fourth, tested the same way, added a smaller but
-equally consistent step — nine metrics out of nine, MAE 1.218 to 1.205,
-Spearman 0.709 to 0.720, the top XI's real points at a cold start 10.7 to
-11.0. More history beat cleverer features, twice; there is no fifth season
-with xG to add, so this lever is now spent. Older rows count for less through
-the 40-gameweek recency half-life, which is what lets a 2022-23 row help
-without a 2022-23 role being mistaken for a current one.
-
-2024-25 rather than 2025-26 on purpose. The historical `xP` scrape is patchy —
-27 of 38 gameweeks in 2025-26 have it zero for *every* player — so a backtest
-there scores `fpl_ep` on the handful of gameweeks that survive while every other
-model is scored on all of them. `ranked_gws` now travels with each row so that
-mismatch is visible rather than silent.
+xG for. Older rows count for less through the 40-gameweek recency half-life,
+which is what lets a 2022-23 row help without a 2022-23 role being mistaken for
+a current one. (The third and fourth seasons were each measured as a gain when
+added, but with the leaked `xP` in the model; see below.)
 
 **Players with recent minutes** — the honest view, since ~55% of the pool never
 plays and their guaranteed zeros flatter every metric:
 
-| model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
-|---|---|---|---|---|---|
-| **`component`** | 34 | **1.205** | **1.857** | **0.729** | **0.720** |
-| `fpl_ep` | 31 | 1.513 | 2.302 | 0.676 | 0.665 |
-| `season_mean` | 34 | 1.844 | 2.751 | 0.402 | 0.387 |
-| `minutes_x_pp90` | 34 | 1.914 | 2.774 | 0.419 | 0.404 |
-| `last3_mean` | 34 | 2.003 | 2.978 | 0.387 | 0.375 |
+| model | 2024-25 MAE | 2024-25 Spearman within position | 2025-26 MAE | 2025-26 Spearman within position |
+|---|---|---|---|---|
+| **`component`** | **1.716** | **0.484** | **1.837** | **0.493** |
+| `season_mean` | 1.844 | 0.387 | 2.014 | 0.359 |
+| `minutes_x_pp90` | 1.914 | 0.404 | 2.076 | 0.400 |
+| `last3_mean` | 2.003 | 0.375 | 2.161 | 0.365 |
 
 **All players:**
 
-| model | ranked GWs | MAE | RMSE | Spearman (overall) | Spearman (within position) |
-|---|---|---|---|---|---|
-| **`component`** | 34 | **0.659** | **1.348** | **0.790** | **0.782** |
-| `fpl_ep` | 31 | 0.882 | 1.690 | 0.758 | 0.751 |
-| `minutes_x_pp90` | 34 | 1.016 | 2.013 | 0.716 | 0.709 |
-| `last3_mean` | 34 | 1.061 | 2.155 | 0.703 | 0.697 |
-| `season_mean` | 34 | 1.059 | 2.020 | 0.664 | 0.656 |
+| model | 2024-25 MAE | 2024-25 Spearman within position | 2025-26 MAE | 2025-26 Spearman within position |
+|---|---|---|---|---|
+| **`component`** | **0.949** | 0.707 | **0.922** | 0.726 |
+| `minutes_x_pp90` | 1.016 | **0.709** | 1.003 | **0.746** |
+| `last3_mean` | 1.061 | 0.697 | 1.043 | 0.735 |
+| `season_mean` | 1.059 | 0.656 | 1.056 | 0.689 |
 
-### What this clears, and the asterisk on it
+`fpl_ep` — FPL's own figure — is left out of both tables. On historical seasons
+it knows the result, so it is not a bar anything honest can be measured
+against; the harness still prints it, and it still "wins".
+
+On the walk-forward that decided the odds (every other gameweek of 2024-25),
+the model's top XI scored **5.9 real points a player** a gameweek, against 4.8
+for the best baseline's. The figure this README used to quote, 9.5, was the
+leak.
+
+### What this clears
 
 The brief's definition of done asks the model to beat all three baselines on MAE
-**and** within-position rank correlation. It now does, on both views.
+**and** within-position rank correlation. On the players-with-recent-minutes
+view it does, in both seasons and by a clear margin: ranking 0.48–0.49 against
+0.36–0.40. On the all-players view it has the best MAE in both seasons but only
+ties the minutes baseline on ranking in 2024-25 and trails it in 2025-26 (0.726
+against 0.746). Ranking the whole pool is mostly ranking who plays, which is
+exactly what that baseline measures and what the model, without team news, can
+only infer from lagged minutes.
 
-But `xP` — FPL's own expected points — is both baseline (b) *and* one of the
-model's features, so "beats baseline (b)" needs stating precisely. The claim is
-not "a model built from scratch beats FPL's". It is:
+Whether it beats FPL's own *pre-deadline* figure is not yet known. There is one
+clean gameweek of that figure (2026-27 GW5, from the snapshot); `fpl review`
+keeps the running comparison from there on.
 
-> FPL's published forecast, corrected by a model trained on lagged form,
-> fixtures and team strength, beats that forecast used raw.
+### The leak in FPL's historical expected points
 
-That is still a real result — the corrections add information rather than
-reproducing what was already there — and the size of it is the honest measure of
-what the model contributes:
+The brief warned that the historical `xP` might be scraped after the gameweek
+(§6.1). An earlier check — players who went on to miss a match still had
+nonzero `xP` — showed it was not computed after the whistle *in full*, and it
+was taken as settled. It was not. `fpl snapshot` produced the first
+expected-points figure that is pre-deadline by construction (2026-27 GW5), and
+against it three checks on the historical column, 2022-23 to 2025-26, agree:
 
-| | MAE | Spearman (within position) |
-|---|---|---|
-| `fpl_ep` alone | 1.513 | 0.665 |
-| component **without** `xP` | 1.718 | 0.468 |
+| rank correlation with points, players with recent minutes | last week | the week forecast | the week after |
+|---|---|---|---|
+| snapshot `ep_next`, 2026-27 GW5 | **0.71** | 0.53 | — |
+| historical `xP`, each season | 0.62–0.66 | **0.68–0.72** | 0.41–0.42 |
 
-(The middle row was measured with two seasons of history; the comparison it
-makes still stands.)
+A forecast is built from the past, so it tracks the past better than the week
+it predicts; the snapshot does. The historical column does the reverse in every
+season and then falls away a week later — the signature of a number recorded
+after the matches.
 
-| component **with** `xP` | **1.205** | **0.720** |
+- Among regular starters on the same middling form (2–4 points a game), it gave
+  those about to score 10+ **6.0–6.5** and those about to blank **2.3**, in
+  every season. No forecast can know which is which.
+- A top XI picked on it scored 7.5–8.5 real points a player; picked on the
+  snapshot, 6.0.
 
-The middle row is the model on its own inputs, and it loses to FPL. That gap was
-never a modelling failure: FPL's figure is computed with **team news** — press
-conferences, predicted lineups, injury flags — and nothing in the lagged feature
-frame reconstructs a team sheet. Minutes are the make-or-break input (brief
-§6.3) and the lineup feed is the hardest thing to source (§3.6).
+The model had made `xP` its largest input, so it learned the result through
+it. Backtests reported MAE 1.205, within-position Spearman 0.720 and a top XI
+of 9.5–10.3 points a player — 85% of what perfect hindsight would have scored —
+and the live model over-trusted FPL's real pre-deadline figure, which knows far
+less. Every number in this README measured with `xP` in the model is affected;
+the ones that matter have been re-measured above.
+
+`xP` stays in the data — the page shows it, and `fpl review` scores the model
+against the live and snapshot values, which are genuine — but it is not a
+feature, and `tests/test_leakage.py` fails if it becomes one.
+
+### Betting odds
+
+The market's pre-match prices for every match since 2022-23, from
+football-data.co.uk (`src/data/odds.py`): the odds collected on the Friday
+afternoon for weekend games — about the FPL deadline — not the closing ones,
+which carry later team news. Win/draw/loss and over/under 2.5 goals, margin
+removed, become each side's expected goals, and every player row gets his
+side's expected goals for and against. They average within 0.1 of actual goals
+in every season.
+
+Against the same model without them, on every other gameweek of 2024-25 and
+GW2–6 of 2025-26: accuracy unchanged (MAE +0.001, ranking +0.002), and the top
+XI **+0.26 real points a player** (95% interval +0.05 to +0.48), changing about
+3 of the 11 picks a week. Adopted.
+
+A gameweek's prices appear a few days before it, so a build earlier in the week
+has none for the week it predicts. Rather than hand a model trained with odds a
+blank, `predict` falls back to the same model fitted without them — the variant
+measured above — and the page and `fpl predict` say so. Rebuild once the week's
+odds are out.
+
+### Against the crowd
+
+Does the model pick better than FPL managers do? Each gameweek's ten most-bought
+players are what the crowd decided before the deadline: net transfers track the
+*previous* week's points (rank correlation 0.18) more than the week bought for
+(0.10). For each, the model's alternative is the player it rated highest at the
+same position within £0.5m. On every other gameweek of 2024-25 and GW2–6 of
+2025-26, where the two disagreed (141 of 200 buys):
+
+| | real points |
+|---|---|
+| the crowd's buy | 4.56 |
+| the model's same-price alternative | 4.45 |
+
+A draw: the model's pick won 55, lost 65 and tied 21, and the 95% interval on
+the difference runs from −0.99 to +0.87. The crowd chases last week — its top
+buys averaged 8.0 points the week before and 4.9 in the week bought for — but
+the model does no better at the same price. The buys the model *agreed* with
+averaged 5.46, a hint (interval −0.40 to +2.29) that it is more use as a filter
+on popular picks than as a rival to them.
+
+The same comparison with the leaked `xP` in the model gave its alternative 9.6
+points to the crowd's 4.0 — which is how the leak was found.
 
 ### Team news, applied rather than learned
 
@@ -623,9 +712,9 @@ is stable enough within a season that the season snapshot is a fair training
 proxy, so it is a feature. First-choice penalty takers scored 0.359 goals per 90
 in 2025-26 against 0.105 for everyone else. And yet: **on the 2024-25 backtest
 it moved nothing** — MAE 1.2945 to 1.2967, Spearman 0.6946 to 0.6936, inside
-noise. The likely reason is that `xP` already encodes penalty duty, because FPL
-knows who takes them. Kept as a hedge for the gameweeks where `xP` is missing;
-not claimed as a gain.
+noise. That was measured with the leaked `xP` in the model, which already knew
+who had scored the penalties; it is kept, and worth re-measuring on the clean
+model.
 
 **Availability** (`chance_of_playing_next_round`) has no history at all, so it
 is applied as a *ceiling* on the minutes prediction for the gameweek being
@@ -635,32 +724,18 @@ GW5 predictions this changed 139 of 258 flagged players; Dean Henderson went
 from 52% (recent minutes) to 0% (injured), and from 1.9 expected points to 0.
 
 `fpl snapshot` stores the live player data before a deadline, and the played
-rows of any gameweek with a snapshot train on those stored values — `xP` where
-there would otherwise be none, and the set-piece orders as they stood then
-rather than as they stand today. From the first snapshot on, the current
-season is no longer trained blind on its largest input.
-
-### The residual doubt
-
-The brief warns that `xP` may be scraped post-gameweek (§6.1), which would make
-this circular. Checked rather than assumed, on 2024-25 where the scrape is 91%
-complete: players who started the previous three matches and then did not play
-average **1.40** expected points against **3.55** for those who did. Reduced,
-not zeroed — which is what FPL's *pre-deadline* `chance_of_playing` flags look
-like, and not what a column computed after the whistle would look like.
-
-That is evidence, not proof. `xP` correlates 0.67 with same-gameweek minutes,
-and some of that could be knowledge rather than forecasting. The snapshots
-settle it going forward: `ep_next` captured before each deadline is provably
-pre-deadline, and it is what the current season's rows now train on. Once a
-season of them exists, this comparison can be re-run against a column with no
-doubt attached.
+rows of any gameweek with a snapshot train on the set-piece orders as they
+stood then rather than as they stand today.
 
 ### Measured and not adopted
 
-Three plausible improvements, each tested on the walk-forward harness before
-being believed. The current model won all three, so they are recorded here to
-save re-trying them.
+Plausible improvements, tested on the walk-forward harness and not adopted.
+
+**Read these with care.** Every one was measured with the leaked `xP` in the
+model, on test weeks whose `xP` knew the result, so any variant that leaned
+less on `xP` was bound to lose — the xG-only rates and the cross-season prior
+in particular deserve a clean re-test. They are kept as a record of what was
+tried, not as settled verdicts.
 
 **Scoring rates from xG only, with points and FPL's `xP` removed.** The
 motivation was real: four gameweeks in, a £5.6m midfielder on a hot streak and
@@ -754,6 +829,12 @@ where `xP` is missing the BPS ranking degrades (correlation 0.3 against 0.75)
 and the table promises 2.2 for first place while delivering 1.2. With `xP`
 present the two agree (2.34 against 2.29). Building the table out-of-fold would
 make it honest when the inputs are thin; it would not have changed this call.
+
+**Correction.** This audit ran with the leaked `xP` in the BPS model and on
+test weeks whose `xP` knew the result, so "calibrated" describes that model,
+not a fair one. Emersonn's bonus came from FPL's figure because the model had
+learned that FPL's figure knew who got bonus. The rebuilt model does not read
+`xP`; its bonus term should be audited afresh.
 
 ## Running the tests
 

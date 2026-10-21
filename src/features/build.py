@@ -222,8 +222,12 @@ def build_features(
     static_feats = [
         "gw", "element_type", "team_difficulty", "opp_difficulty", "value",
         # Published before the deadline, so usable for the row it sits on.
-        "xP",
+        "odds_team_goals", "odds_opp_goals",
     ]
+    # Not `xP`. FPL's own expected points would be a fair input at a deadline,
+    # but every historical row of it was recorded after the match, so a model
+    # trained on it learns the result and then over-trusts the live figure,
+    # which knows far less. See `src/data/schema.py` for the evidence.
     feature_cols = (
         static_feats + ctx_feats + player_feats + derived_feats + team_feats + opp_feats
     )
