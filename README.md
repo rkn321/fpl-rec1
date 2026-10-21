@@ -366,6 +366,43 @@ play over the weekend, final by the time the next deadline arrives. A browser
 cannot ask FPL for this itself, so it comes through the `fpl serve` helper,
 refreshed every minute — opened as a plain file the page simply omits it.
 
+**Player sheets.** Click any player's name or xPts figure, in the pool or on
+the pitch, for the figure taken apart: his chance of playing and of 60
+minutes, each scoring term it is built from (largest first, adding up to the
+total), his fixtures ahead, and — once gameweeks have been reviewed — what the
+model and FPL each predicted for him against what he scored.
+
+**Track record.** At the foot of the squad panel, the season so far as `fpl
+review` scored it: the model's average miss, within-position ranking and
+best-XI points against FPL's own figure, gameweek by gameweek, and every
+scoring term's predicted total against its actual one. It is read from
+`review_log.csv` at build time, so run `fpl review` after a gameweek and the
+next `fpl serve` shows it.
+
+**Availability, in words.** Cards and pool rows say who might not play: FPL's
+own flag first — `75%` in amber for a doubt, `INJ`, `SUS` or `OUT` in red, with
+the card itself tinted — and, for a player FPL calls fit, the minutes model's
+view: `ROT` under a 60% chance of lasting an hour, `BENCH` under a 30% chance
+of playing at all. The thresholds are `ROTATION_P60` and `BENCH_P_PLAY` in the
+template.
+
+**Fixtures ahead.** Each card shows this gameweek's fixture and, under it, a
+strip of the four after it (home in capitals, away in lower case, ×2 for a
+double, a dash for a blank). The **fixture ticker** under the chip advice lays
+every club's next eight gameweeks side by side, ranked by how kind the next 3,
+5 or 8 are, in average games: each fixture counts its Elo multiplier, so an
+even game is 1.0, a double counts twice and a blank nothing. Clicking a club
+filters the player pool to it.
+
+**Fixture colours and weights are Elo, not FPL's difficulty.** Every fixture
+carries its Elo gap — the two sides' ratings, home advantage included — and
+that is what the projections, the transfer advice, the chip timing and the
+ticker weight it by. The chips are coloured by an Elo tier on FPL's familiar
+1–5 scale, cut so each tier turns up as often as FPL's own number does; hover
+one for both ratings. Why: [fixtures beyond next
+week](#fixtures-beyond-next-week-elo-not-fpls-difficulty). A page built
+without the results to rate from falls back to FPL's difficulty.
+
 **Chip timing.** Under the chip bar the page says when to play each chip, from
 the same projections taken one gameweek at a time — a double gameweek is where
 Triple Captain and Bench Boost pay, a blank is where a Free Hit does. Each chip

@@ -8,6 +8,7 @@ import pytest
 
 from src.data.elo import START, EloBook, expected_home, fixture_gap, margin_factor
 from src.evaluate_fixtures import ELO_CAP, fit
+from src.frontend import _fixture_lookup
 
 
 def results(rows: list[tuple[str, str, str, str, int, int]]) -> pd.DataFrame:
@@ -97,6 +98,29 @@ def test_elo_multiplier_recovers_a_line_and_caps_it() -> None:
     far = m(pd.Series(["DEF", "DEF"]), pd.Series([ELO_CAP, ELO_CAP * 3]))
     assert far[0] == pytest.approx(far[1])            # flat beyond the cap
     assert m(pd.Series(["MID"]), pd.Series([np.nan]))[0] == pytest.approx(m.overall)
+
+
+class _Client:
+    """Just enough of FPLClient for the fixture lookup."""
+
+    def fixtures_frame(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "event": [8, 9], "team_h": [1, 2], "team_a": [2, 1],
+            "team_h_difficulty": [2, 4], "team_a_difficulty": [4, 2],
+            "kickoff_time": ["2026-10-24T14:00:00Z", "2026-10-31T14:00:00Z"],
+        })
+
+    def teams(self) -> pd.DataFrame:
+        return pd.DataFrame({"id": [1, 2], "short_name": ["ARS", "BUR"]})
+
+
+def test_fixture_lookup_carries_each_sides_gap() -> None:
+    fx = _fixture_lookup(_Client(), 8, horizon=2, gap=lambda h, a: 150.0 if h == 1 else -40.0)
+    ars, bur = fx[1], fx[2]
+    assert [f["elo"] for f in ars] == [150, 40]
+    assert [f["elo"] for f in bur] == [-150, -40]
+    # Without Elo the entries are exactly as before.
+    assert "elo" not in _fixture_lookup(_Client(), 8, horizon=2)[1][0]
 
 
 def test_the_close_season_adjustment_is_visible_before_the_first_match() -> None:

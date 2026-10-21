@@ -19,7 +19,7 @@ import logging
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "frontend" / "template.html"
 OUTPUT_NAME = "squad-picker.html"
 
-# What the page shows on hover: playing time, then the points terms.
+# What the player sheet breaks a figure into: playing time, then the points terms.
 BREAKDOWN_TERMS = ("p_play", "p_60", "expected_minutes", *POINTS_TERMS)
 DATA_PLACEHOLDER = "/*__FPL_DATA__*/null"
 
@@ -319,15 +319,121 @@ def last_season_records(client: FPLClient) -> dict[int, dict[str, int]]:
     return records
 
 
+def _clean(x: Any, nd: int = 2) -> float | None:
+    """A JSON-safe number: NaN becomes null rather than a bare `NaN` in the page."""
+    return None if x is None or pd.isna(x) else round(float(x), nd)
+
+
+def track_record(config: Config) -> dict[str, Any] | None:
+    """This season's review log, for the page's track-record panel and player sheets.
+
+    Read from what `fpl review` has already written, through the same functions
+    it prints from, so the page and the CLI can never disagree. None until the
+    first gameweek is reviewed.
+    """
+    from .review import calibration, head_to_head, log_path
+
+    path = log_path(config)
+    if not path.exists():
+        return None
+    rows = pd.read_csv(path)
+    rows = rows[rows["season"] == config.season_current]
+    if rows.empty:
+        return None
+
+    h2h = head_to_head(rows)
+    games = [
+        {"gw": gw, **{k: _clean(v, 3) for k, v in r.items()}}
+        for gw, r in h2h.to_dict(orient="index").items()
+    ]
+    terms = [
+        {"term": term, "predicted": _clean(r["predicted"], 1), "actual": _clean(r["actual"], 1)}
+        for term, r in calibration(rows).to_dict(orient="index").items()
+    ]
+
+    # Per player, only where there was something to be right or wrong about:
+    # the hundreds of fringe players predicted at ~0 who did not play add bulk
+    # to every page and nothing to read.
+    worth = (rows["expected_points"] >= 0.5) | (rows["minutes"] > 0)
+    players: dict[int, list[list[float | None]]] = {}
+    for r in rows[worth].sort_values("gw").itertuples():
+        players.setdefault(int(r.player_id), []).append(
+            [int(r.gw), _clean(r.expected_points), _clean(r.xp_fpl), _clean(r.actual, 0), int(r.minutes)]
+        )
+
+    return {
+        "gws": sorted(int(g) for g in rows["gw"].unique()),
+        "games": games,
+        "terms": terms,
+        "players": players,
+    }
+
+
+def fixture_strength(config: Config, client: FPLClient) -> tuple[Callable[[int, int], float] | None, dict | None]:
+    """Elo for the page: the home side's rating gap for any fixture, and the multipliers.
+
+    The multipliers turn a gap into the share of a player's usual rate to
+    expect, by position, fitted on every completed season the way the page's
+    difficulty table was (`evaluate_fixtures.fit`). They replace FPL's 1-5
+    rating in the projections because, set before kickoff, Elo tracks the
+    betting market far more closely — see the README. (None, None) if anything
+    is missing, and the page falls back to the difficulty table.
+    """
+    from . import pipeline
+    from .data.elo import EloBook, fixture_gap, load_results, team_names
+    from .evaluate_fixtures import ELO_CAP, attach_gap, deadlines, fit, season_ratio, starters
+
+    try:
+        results = load_results(config, config.season_current)
+        book = EloBook(results)
+        df, _ = pipeline.load_processed(config)
+        ids = pipeline.team_ids(config, df, client)
+        names = {s: team_names(results, s, i) for s, i in ids.items()}
+        past = df[df["season"] < config.season_current]
+        rows = starters(past)
+        rows["ratio"] = season_ratio(rows)
+        dl = deadlines(past)
+        when = pd.Series([dl[(s, int(g))] for s, g in zip(rows["season"], rows["gw"])], index=rows.index)
+        rows["gap"] = attach_gap(rows, book, names, when)
+        fitted = fit(rows, "elo")
+    except Exception as exc:  # the page still works on the difficulty table
+        log.warning("Elo unavailable (%s); the page will weight fixtures by FPL difficulty", exc)
+        return None, None
+
+    # Every result so far: `as_of` takes matches strictly before the date given.
+    ratings = book.as_of(pd.Timestamp.now() + pd.Timedelta(days=1))
+    current = names.get(config.season_current, {})
+
+    def gap(home_id: int, away_id: int) -> float:
+        h, a = current.get(home_id), current.get(away_id)
+        return fixture_gap(ratings, h, a, True, book.home) if h and a else float("nan")
+
+    # Colour tiers on FPL's familiar 1-5 scale, cut so each tier turns up as
+    # often as FPL's own rating of that number did over the same seasons.
+    sides = rows.dropna(subset=["gap"]).drop_duplicates(["season", "gw", "team_id", "opponent_id"])
+    share = sides["team_difficulty"].value_counts(normalize=True).sort_index().cumsum()
+    tiers = [round(float(sides["gap"].quantile(1 - c))) for c in share.iloc[:-1]]
+
+    # Per position, a + b x gap with the gap capped: the same line the backtest scored.
+    multipliers = {
+        "cap": ELO_CAP,
+        "tiers": tiers,
+        **{pos: [round(float(r["a"]), 4), round(float(r["b"]), 6)] for pos, r in fitted.table.iterrows()},
+    }
+    return gap, multipliers
+
+
 def _fixture_lookup(
-    client: FPLClient, first_gw: int, horizon: int = 1
+    client: FPLClient, first_gw: int, horizon: int = 1,
+    gap: Callable[[int, int], float] | None = None,
 ) -> dict[int, list[dict[str, Any]]]:
     """team id -> its fixtures across `horizon` gameweeks from `first_gw`.
 
     A list per team, and the gameweek is carried on every entry, because the
     two things that most change a transfer's value are exactly the ones a
     single-gameweek view hides: a blank (no entry for that gameweek) and a
-    double (two entries for it).
+    double (two entries for it). With `gap`, each entry also carries `elo`:
+    that side's rating gap on the day, home advantage included.
     """
     fixtures = client.fixtures_frame()
     teams = client.teams().set_index("id")["short_name"].to_dict()
@@ -337,12 +443,15 @@ def _fixture_lookup(
     selected = fixtures[fixtures["event"].isin(list(window))].sort_values(["event", "kickoff_time"])
     for _, f in selected.iterrows():
         home, away, gw = int(f["team_h"]), int(f["team_a"]), int(f["event"])
+        g = gap(home, away) if gap else float("nan")
+        elo = {} if pd.isna(g) else {"home": {"elo": round(g)}, "away": {"elo": round(-g)}}
         out.setdefault(home, []).append(
             {
                 "gw": gw,
                 "opp": teams.get(away, "?"),
                 "home": True,
                 "difficulty": int(f["team_h_difficulty"]),
+                **elo.get("home", {}),
             }
         )
         out.setdefault(away, []).append(
@@ -351,6 +460,7 @@ def _fixture_lookup(
                 "opp": teams.get(home, "?"),
                 "home": False,
                 "difficulty": int(f["team_a_difficulty"]),
+                **elo.get("away", {}),
             }
         )
     return out
@@ -392,7 +502,9 @@ def build_player_data(
     teams = client.teams().set_index("id")["short_name"].to_dict()
     # A few gameweeks beyond the horizon, so the page still has fixtures to
     # work with if a deadline passes before the next rebuild.
-    fixtures = _fixture_lookup(client, gw, horizon=horizon + 4)
+    fixture_gws = horizon + 4
+    gap, elo_multipliers = fixture_strength(config, client)
+    fixtures = _fixture_lookup(client, gw, horizon=fixture_gws, gap=gap)
     last_season = last_season_records(client)
 
     rows = []
@@ -484,6 +596,12 @@ def build_player_data(
         "gwsPlayed": max(0, gw - 1),
         "horizon": horizon,
         "horizonGws": list(range(gw, gw + horizon)),
+        # The last gameweek every player's `fixtures` covers: past it a missing
+        # fixture is unknown to the page, not a blank.
+        "fixturesThrough": gw + fixture_gws - 1,
+        "eloMultiplier": elo_multipliers,
+        "oddsPriced": prediction.odds_priced,
+        "track": track_record(config),
         "teams": [{"id": int(k), "short": v} for k, v in sorted(teams.items())],
         "players": rows,
     }
