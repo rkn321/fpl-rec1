@@ -366,6 +366,19 @@ play over the weekend, final by the time the next deadline arrives. A browser
 cannot ask FPL for this itself, so it comes through the `fpl serve` helper,
 refreshed every minute — opened as a plain file the page simply omits it.
 
+**Layout.** The call — the page's verdict on your transfers — heads the team
+sheet, with a **Make this transfer** button when a move is worth making. Under
+the pitch, everything else sits in four tabs: Transfers, Chips, Fixtures and
+Track record. A tray at the foot of the column shows this week's transfers as
+out → in, the free transfers used, any hit and the active chip, beside
+**Undo** and **Save**. Squad cards wear their club's shirt (keepers one
+keeper's kit).
+
+**Every change can be undone.** A transfer, armband, swap, chip, Wildcard
+draft, reset or save shows a toast with Undo, and the tray's Undo and Ctrl+Z
+step back through them; undo history lasts until the page is reloaded.
+Shortcuts: `/` jumps to the player search, `1`–`4` switch tabs.
+
 **Player sheets.** Click any player's name or xPts figure, in the pool or on
 the pitch, for the figure taken apart: his chance of playing and of 60
 minutes, each scoring term it is built from (largest first, adding up to the

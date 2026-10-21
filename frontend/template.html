@@ -251,9 +251,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 
 .stat .v {
+  display: inline-block;
   font-family: var(--font-mono); font-size: 19px; font-weight: 500;
   font-variant-numeric: tabular-nums; letter-spacing: -.02em;
   white-space: nowrap;
+}
+/* A figure that just changed lifts and catches the light for a moment. */
+.stat.bump .v { animation: bump .6s cubic-bezier(.2, .8, .2, 1); }
+@keyframes bump {
+  0% { transform: translateY(-4px); color: var(--accent); }
+  100% { transform: none; }
 }
 
 .stat.is-warn .v, .stat.is-warn .k { color: var(--warn); }
@@ -514,24 +521,44 @@ select:hover, .filters input[type="search"]:hover { border-color: var(--ink-fain
 
 /* -------------------------------------------------------- transfer advice */
 /* The call, set as a headline: one serif word, then the reasoning. */
-.verdict {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
-  padding: 16px 18px 15px;
+/* The call: the one sentence the page exists to say, at the head of the team
+   sheet, with the move it recommends one click away. A wash of green for a
+   move worth making, amber for a hold, ink for a squad still being built. */
+#call:empty { display: none; }
+.callbar {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px 24px;
+  padding: 18px 20px 17px;
   border-bottom: 1px solid var(--line);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--surface-2) 90%, transparent), transparent 75%);
+  box-shadow: inset 4px 0 0 var(--ink-faint);
 }
-.verdict::before {
-  content: "The call"; width: 100%;
-  font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--ink-faint);
+.callbar.go {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--good-bg) 90%, transparent), transparent 72%);
+  box-shadow: inset 4px 0 0 var(--good);
 }
-.verdict .head {
+.callbar.hold {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--warn-bg) 85%, transparent), transparent 72%);
+  box-shadow: inset 4px 0 0 var(--warn);
+}
+.callbar .lbl {
+  display: block; margin-bottom: 3px;
+  font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint);
+}
+.callbar .head {
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  font-size: 40px; line-height: 1; letter-spacing: -.01em;
+  font-size: 46px; line-height: .92; letter-spacing: -.015em; white-space: nowrap;
 }
-.verdict.go .head { color: var(--good); }
-.verdict.hold .head { color: var(--warn); }
-.verdict .why { font-size: 14px; color: var(--ink-muted); flex: 1 1 260px; text-decoration: none; cursor: auto; }
-.verdict .why b { color: var(--ink); font-weight: 650; }
+.callbar.go .head { color: var(--good); }
+.callbar.hold .head { color: var(--warn); }
+.callbar .why { font-size: 14.5px; line-height: 1.5; color: var(--ink-muted); max-width: 62ch; }
+.callbar .why b { color: var(--ink); font-weight: 650; }
+.callbar .act { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.callbar .gain {
+  font-family: var(--font-mono); font-size: 30px; font-weight: 600; line-height: 1;
+  letter-spacing: -.03em; color: var(--good); font-variant-numeric: tabular-nums;
+}
+.callbar .gain small { font-size: 12px; letter-spacing: 0; color: var(--ink-faint); font-weight: 500; margin-left: 3px; }
+.callbar .act .btn { padding: 7px 18px; }
 
 .moves { display: flex; flex-direction: column; }
 
@@ -924,6 +951,136 @@ dialog.sheet::backdrop { background: rgba(12, 16, 14, .45); backdrop-filter: blu
 .track .note { font-size: 11.5px; color: var(--ink-faint); margin-top: 8px; }
 .track .ratio.off { color: var(--warn); font-weight: 600; }
 
+/* ------------------------------------------------------------ the columns */
+/* The team sheet and the workspace stack in the left column; the tray rides
+   at its foot. */
+.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.team-head { border-top: none; }
+
+/* --------------------------------------------------------- workspace tabs */
+.worktabs {
+  display: flex; gap: 4px; padding: 0 12px;
+  border-bottom: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+}
+.worktab {
+  display: flex; align-items: baseline; gap: 8px;
+  border: none; background: none; border-radius: 0;
+  padding: 15px 12px 12px; margin-bottom: -1px;
+  font-family: var(--font-display); font-stretch: 72%;
+  font-size: 18px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 3px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.worktab:hover { color: var(--ink-muted); }
+.worktab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.worktab .count {
+  font-family: var(--font-mono); font-stretch: 100%; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0; text-transform: none; color: var(--ink-faint);
+}
+.worktab .count:empty { display: none; }
+.worktab .count.hot {
+  color: var(--accent-ink); background: var(--accent);
+  padding: 1px 6px; border-radius: 999px; transform: translateY(-1px);
+}
+.workpane { animation: pane-in .2s ease; }
+@keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.pane-tools {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  padding: 12px 18px; border-bottom: 1px solid var(--line);
+}
+.pane-tools .p-sub { font-size: 10px; }
+.pane-sub {
+  margin: 0; padding: 14px 18px 8px; border-top: 1px solid var(--line);
+  font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint);
+}
+.work-panel .chipbar { border-top: none; }
+
+/* ------------------------------------------------------------------- tray */
+/* The week in one line, always in reach: what you have changed, what it
+   costs, and the two ways out of it. */
+.tray {
+  position: sticky; bottom: 14px; z-index: 15;
+  display: flex; align-items: center; gap: 14px;
+  padding: 9px 10px 9px 18px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2); backdrop-filter: blur(12px) saturate(1.2);
+  border: 1px solid var(--line-strong); border-radius: 12px;
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .7), 0 1px 0 rgba(0, 0, 0, .1);
+  transition: border-color .2s, box-shadow .2s;
+}
+.tray.has-changes { border-color: color-mix(in srgb, var(--accent) 65%, var(--line-strong)); }
+.tray-changes {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  font-size: 13px; color: var(--ink-muted);
+}
+.tray-changes .lbl {
+  font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint);
+  margin-right: 2px;
+}
+.tray-changes .quiet { color: var(--ink-faint); }
+.xfer {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px 3px 9px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-family: var(--font-display); font-stretch: 72%; font-size: 15px; font-weight: 750;
+  animation: chip-in .25s ease;
+}
+.xfer .out { color: var(--ink-faint); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.xfer .arr { color: var(--ink-faint); font-family: var(--font-body); font-stretch: 100%; font-size: 12px; }
+.xfer .in { color: var(--ink); }
+@keyframes chip-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+.tray-cost { font-family: var(--font-mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; text-align: right; }
+.tray-cost b { color: var(--ink); font-weight: 600; }
+.tray-cost .hit { color: var(--danger); font-weight: 600; }
+.tray-cost .chipon { color: var(--good); font-weight: 600; }
+
+/* ----------------------------------------------------------------- toasts */
+.toasts {
+  position: fixed; left: 24px; bottom: 92px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 14px;
+  max-width: 440px; padding: 9px 9px 9px 15px; border-radius: 10px;
+  background: var(--ink); color: var(--surface);
+  font-size: 13px; line-height: 1.4;
+  box-shadow: 0 14px 30px -14px rgba(0, 0, 0, .65);
+  animation: toast-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+.toast.warn { background: var(--warn); color: #1a1205; }
+.toast .msg { flex: 1 1 auto; }
+.toast button {
+  flex: none; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  background: transparent; color: inherit; border-radius: 999px;
+  padding: 3px 12px; font-size: 12px; font-weight: 650;
+}
+.toast button:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.toast.leaving { animation: toast-out .2s ease forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px); } }
+
+/* ------------------------------------------------------------------ kits */
+/* Each card wears its club's shirt; keepers wear one keeper's kit, as on
+   the FPL pitch, so the shape of the side reads before any name does. */
+.card .kit {
+  display: block; width: 40px; height: 36px; margin: -1px auto 2px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35));
+}
+.bench .card .kit { width: 34px; height: 30px; }
+
+/* A card that just arrived lands with a small bounce and a glow that fades. */
+.card.is-new { animation: card-in .7s cubic-bezier(.2, .9, .3, 1.25); }
+@keyframes card-in {
+  0% { transform: translateY(6px) scale(.88); box-shadow: 0 0 0 3px var(--accent), var(--lift); }
+  55% { transform: translateY(-3px) scale(1.04); box-shadow: 0 0 0 3px var(--accent), var(--lift); }
+  100% { transform: none; box-shadow: var(--lift); }
+}
+
 /* ----------------------------------------------------------------- footer */
 .foot {
   max-width: 1520px; margin: 4px auto 0; padding: 14px 24px 32px;
@@ -980,17 +1137,11 @@ dialog.sheet::backdrop { background: rgba(12, 16, 14, .45); backdrop-filter: blu
 </header>
 
 <main>
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Transfer advice</h2>
-      <label class="p-sub" for="metric">Rate players on</label>
-      <select id="metric" aria-label="Ranking metric"></select>
-      <label class="p-sub" for="horizon">over</label>
-      <select id="horizon" aria-label="Planning horizon"></select>
-    </div>
-    <div id="advice"></div>
+ <div class="col">
+  <section class="panel squad-panel">
+    <div id="call"></div>
 
-    <div class="panel-head" style="border-top:1px solid var(--line)">
+    <div class="panel-head team-head">
       <h2 id="formationLabel">Your XV</h2>
       <div class="armbands" id="armbands"></div>
       <button class="btn" id="copySquad" title="Copy your 15 for config.yaml">Copy squad</button>
@@ -1012,28 +1163,51 @@ dialog.sheet::backdrop { background: rgba(12, 16, 14, .45); backdrop-filter: blu
     <div class="bench" id="bench">
       <div class="bench-label">Bench — autosub order</div>
     </div>
-
-    <div class="chipbar" id="chipbar"></div>
-    <div class="chipadvice" id="chipAdvice"></div>
-
-    <div class="panel-head" style="border-top:1px solid var(--line); border-bottom:none;">
-      <h2 style="font-size:17px;">Fixture ticker</h2>
-      <span class="p-sub" id="tickerSpan"></span>
-    </div>
-    <div class="ticker" id="ticker"></div>
-
-    <div class="panel-head" style="border-top:1px solid var(--line); border-bottom:none;">
-      <h2 style="font-size:17px;">Lock in your team</h2>
-      <button class="btn btn-primary" id="confirm">Confirm GW</button>
-    </div>
-    <div class="log" id="log"></div>
-
-    <div class="panel-head" style="border-top:1px solid var(--line); border-bottom:none;">
-      <h2 style="font-size:17px;">Model track record</h2>
-      <span class="p-sub" id="trackSpan"></span>
-    </div>
-    <div class="track" id="track"></div>
   </section>
+
+  <!-- Everything that is not the team sheet, one subject at a time. -->
+  <section class="panel work-panel">
+    <nav class="worktabs" id="worktabs" role="tablist" aria-label="Workspace">
+      <button class="worktab" role="tab" data-tab="transfers" id="tab-transfers">Transfers<span class="count" id="countTransfers"></span></button>
+      <button class="worktab" role="tab" data-tab="chips" id="tab-chips">Chips<span class="count" id="countChips"></span></button>
+      <button class="worktab" role="tab" data-tab="fixtures" id="tab-fixtures">Fixtures<span class="count" id="tickerSpan"></span></button>
+      <button class="worktab" role="tab" data-tab="record" id="tab-record">Track record<span class="count" id="trackSpan"></span></button>
+    </nav>
+
+    <div class="workpane" role="tabpanel" data-pane="transfers" aria-labelledby="tab-transfers">
+      <div class="pane-tools">
+        <label class="p-sub" for="metric">Rate players on</label>
+        <select id="metric" aria-label="Ranking metric"></select>
+        <label class="p-sub" for="horizon">over</label>
+        <select id="horizon" aria-label="Planning horizon"></select>
+      </div>
+      <div id="advice"></div>
+    </div>
+
+    <div class="workpane" role="tabpanel" data-pane="chips" aria-labelledby="tab-chips" hidden>
+      <div class="chipbar" id="chipbar"></div>
+      <div class="chipadvice" id="chipAdvice"></div>
+    </div>
+
+    <div class="workpane" role="tabpanel" data-pane="fixtures" aria-labelledby="tab-fixtures" hidden>
+      <div class="ticker" id="ticker"></div>
+    </div>
+
+    <div class="workpane" role="tabpanel" data-pane="record" aria-labelledby="tab-record" hidden>
+      <div class="track" id="track"></div>
+      <div class="pane-sub">Your saves this season</div>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+
+  <!-- The week's pending changes, and the two actions that settle or undo them. -->
+  <div class="tray" id="tray">
+    <div class="tray-changes" id="trayChanges"></div>
+    <div class="tray-cost" id="trayCost"></div>
+    <button class="btn" id="undo" title="Undo the last change (Ctrl+Z)" disabled>Undo</button>
+    <button class="btn btn-primary" id="confirm">Confirm GW</button>
+  </div>
+ </div>
 
   <aside class="panel">
     <div class="panel-head"><h2>Player pool</h2><span class="p-sub" id="poolCount"></span></div>
@@ -1056,6 +1230,11 @@ dialog.sheet::backdrop { background: rgba(12, 16, 14, .45); backdrop-filter: blu
 <footer class="foot" id="foot"></footer>
 
 <dialog class="sheet" id="sheet" aria-labelledby="sheetName"><div class="sheet-body" id="sheetBody"></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- Kit patterns for the squad cards' shirts, filled in from KITS at start. -->
+<svg class="sr" aria-hidden="true" width="0" height="0"><defs id="kitDefs"></defs></svg>
 
 <script>
 const DATA = /*__FPL_DATA__*/null;
@@ -2771,7 +2950,6 @@ function resetAll() {
   const msg = back
     ? `Discard your changes and go back to the squad this page was built with?`
     : `Clear the squad and start again from Gameweek ${DATA.gameweek}?`;
-  if (!confirm(msg)) return;
   state = back || freshState();
   selectedPick = null;
   if (back) applyBestXI();
@@ -2950,15 +3128,131 @@ async function saveConfig() {
    ===================================================================== */
 const el = id => document.getElementById(id);
 
-let flashTimer = null;
-function flash(msg) {
-  const box = el("notices");
+/* =====================================================================
+   Feedback: toasts, undo, and the tray
+
+   Every change to the squad can be taken back. A change is a snapshot of the
+   whole state taken before it, so undo is exact — transfers, armbands, bench
+   order, chips, even a save — and no action needs an "are you sure?".
+   ===================================================================== */
+const TOAST_MS = 6000;
+const MAX_TOASTS = 3;
+
+function toast(msg, { undo = false, tone = "" } = {}) {
+  const box = el("toasts");
   const node = document.createElement("div");
-  node.className = "notice warn";
-  node.textContent = msg;
-  box.prepend(node);
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => node.remove(), 4200);
+  node.className = `toast ${tone}`;
+  node.innerHTML = `<span class="msg"></span>${undo ? `<button type="button" data-undo>Undo</button>` : ""}`;
+  node.querySelector(".msg").textContent = msg;
+  box.appendChild(node);
+  while (box.children.length > MAX_TOASTS) box.firstElementChild.remove();
+  const leave = () => {
+    if (!node.isConnected) return;
+    node.classList.add("leaving");
+    setTimeout(() => node.remove(), 200);
+  };
+  setTimeout(leave, TOAST_MS);
+  return node;
+}
+
+/** A refusal or a hint: same toast, in amber, with nothing to undo. */
+function flash(msg) {
+  toast(msg, { tone: "warn" });
+}
+
+const undoStack = [];
+const MAX_UNDO = 40;
+
+/**
+ * Run a change so it can be undone: snapshot first, toast after. A refused
+ * or empty change (the state comes out identical) leaves no trace, and cards
+ * that just arrived in the squad get a moment's highlight.
+ */
+function withUndo(label, change) {
+  const before = JSON.stringify(state);
+  const had = new Set(state.picks.map(p => p.id));
+  change();
+  if (JSON.stringify(state) === before) return;
+  const text = typeof label === "function" ? label() : label;
+  undoStack.push({ label: text, snap: before });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  for (const p of state.picks) {
+    if (!had.has(p.id)) document.querySelectorAll(`.card[data-pick="${p.id}"]`).forEach(c => c.classList.add("is-new"));
+  }
+  renderTray();
+  toast(text, { undo: true });
+}
+
+function undo() {
+  const last = undoStack.pop();
+  if (!last) return flash("Nothing to undo.");
+  state = JSON.parse(last.snap);
+  selectedPick = null;
+  render();
+  toast(`Undone: ${last.label}`);
+}
+
+/** This week's transfers as out → in pairs, matched by position where they can be. */
+function pendingTransfers() {
+  if (!state.confirmed) return null;
+  const now = new Set(state.picks.map(p => p.id));
+  const before = new Set(state.confirmed.map(p => p.id));
+  const outs = state.confirmed.filter(p => !now.has(p.id)).map(p => byId.get(p.id));
+  const ins = state.picks.filter(p => !before.has(p.id)).map(p => byId.get(p.id));
+  const pairs = [];
+  for (const o of outs) {
+    const i = ins.findIndex(x => x.pos === o.pos);
+    pairs.push([o, i >= 0 ? ins.splice(i, 1)[0] : null]);
+  }
+  for (const i of ins) pairs.push([null, i]);
+  return pairs;
+}
+
+function renderTray() {
+  const pairs = pendingTransfers();
+  const made = transfersMade();
+  const hit = hitsTaken();
+  const chip = CHIPS.find(c => c.id === state.activeChip);
+  const gw = currentGw();
+  const box = el("trayChanges");
+
+  if (!pairs) {
+    box.innerHTML = state.picks.length < RULES.squadSize
+      ? `<span class="lbl">Squad</span> Building your XV — <b>${state.picks.length} of ${RULES.squadSize}</b> picked`
+      : `<span class="lbl">Squad</span> All ${RULES.squadSize} picked. Save it as your GW${gw} team, and transfers count from there.`;
+  } else if (!pairs.length) {
+    box.innerHTML = `<span class="lbl">This week</span> <span class="quiet">${
+      state.confirmedForGw === gw ? `Saved for GW${gw} — no changes since.` : `No transfers yet for GW${gw}.`}</span>`;
+  } else {
+    box.innerHTML = `<span class="lbl">This week</span>` + pairs.map(([o, i]) =>
+      `<span class="xfer">${o ? `<span class="out">${o.name}</span>` : ""}${o && i ? `<span class="arr">→</span>` : ""}${
+        i ? `<span class="in">${i.name}</span>` : ""}</span>`).join("");
+  }
+
+  const unlimited = UNLIMITED_CHIPS.has(state.activeChip);
+  const parts = [];
+  if (pairs) parts.push(unlimited ? `<b>${made}</b> free under ${chip.name}` : `<b>${made}</b> of ${state.freeTransfers} free`);
+  if (hit) parts.push(`<span class="hit">−${hit} pts</span>`);
+  if (chip) parts.push(`<span class="chipon">${chip.name}</span>`);
+  el("trayCost").innerHTML = parts.join(" · ");
+
+  el("undo").disabled = !undoStack.length;
+  el("tray").classList.toggle("has-changes", made > 0 || !!chip);
+}
+
+/* ------------------------------------------------------------------ tabs */
+const TABS = ["transfers", "chips", "fixtures", "record"];
+let activeTab = (() => {
+  try { return TABS.includes(localStorage.getItem("fpl-tab")) ? localStorage.getItem("fpl-tab") : "transfers"; }
+  catch (e) { return "transfers"; }
+})();
+
+function showTab(name) {
+  if (!TABS.includes(name)) return;
+  activeTab = name;
+  try { localStorage.setItem("fpl-tab", name); } catch (e) { /* a private window: the tab just is not remembered */ }
+  document.querySelectorAll(".worktab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll(".workpane").forEach(p => { p.hidden = p.dataset.pane !== name; });
 }
 
 function renderLedger() {
@@ -2985,10 +3279,15 @@ function renderLedger() {
     });
   }
 
+  // A figure that moved since the last render bumps, so a transfer's effect on
+  // the bank or the hit is seen as well as read. Not on the first render.
+  const bumped = s => lastLedger !== null && lastLedger[s.k] !== undefined && lastLedger[s.k] !== s.v;
   el("ledger").innerHTML = stats.map(s =>
-    `<div class="stat ${s.cls || ""}"${s.title ? ` title="${s.title}"` : ""}><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`
+    `<div class="stat ${s.cls || ""} ${bumped(s) ? "bump" : ""}"${s.title ? ` title="${s.title}"` : ""}><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`
   ).join("");
+  lastLedger = Object.fromEntries(stats.map(s => [s.k, s.v]));
 }
+let lastLedger = null;
 
 /**
  * This gameweek's fixture only — usually one chip, two in a double, none in a
@@ -3068,6 +3367,64 @@ function availabilityBadge(p) {
 
 const availabilityPill = a => (a ? `<span class="pill ${a.cls}" title="${a.title}">${a.text}</span>` : "");
 
+/*
+ * Club shirts, as plain colours: body, sleeves and trim, and two-colour
+ * stripes for the striped sides. A side not listed — a club promoted after
+ * this was written — wears neutral grey until it is added.
+ */
+const KITS = {
+  ARS: { body: "#e30613", sleeves: "#ffffff", trim: "#ffffff" },
+  AVL: { body: "#6a1032", sleeves: "#8fc0e8", trim: "#8fc0e8" },
+  BOU: { stripes: ["#d71920", "#111111"], sleeves: "#111111", trim: "#111111" },
+  BRE: { stripes: ["#e30613", "#ffffff"], sleeves: "#e30613", trim: "#111111" },
+  BHA: { stripes: ["#0057b8", "#ffffff"], sleeves: "#0057b8", trim: "#0057b8" },
+  CHE: { body: "#034694", sleeves: "#034694", trim: "#ffffff" },
+  COV: { body: "#6cb4ee", sleeves: "#6cb4ee", trim: "#ffffff" },
+  CRY: { stripes: ["#1b458f", "#c4122e"], sleeves: "#1b458f", trim: "#ffffff" },
+  EVE: { body: "#003399", sleeves: "#003399", trim: "#ffffff" },
+  FUL: { body: "#f5f5f5", sleeves: "#f5f5f5", trim: "#111111" },
+  HUL: { body: "#f5a12d", sleeves: "#111111", trim: "#111111" },
+  IPS: { body: "#3a64a3", sleeves: "#3a64a3", trim: "#ffffff" },
+  LEE: { body: "#f5f5f5", sleeves: "#f5f5f5", trim: "#1d428a" },
+  LIV: { body: "#c8102e", sleeves: "#c8102e", trim: "#ffffff" },
+  MCI: { body: "#6cabdd", sleeves: "#6cabdd", trim: "#ffffff" },
+  MUN: { body: "#da291c", sleeves: "#da291c", trim: "#111111" },
+  NEW: { stripes: ["#1c1c1c", "#f5f5f5"], sleeves: "#1c1c1c", trim: "#1c1c1c" },
+  NFO: { body: "#dd0000", sleeves: "#dd0000", trim: "#ffffff" },
+  SUN: { stripes: ["#eb172b", "#f5f5f5"], sleeves: "#eb172b", trim: "#111111" },
+  TOT: { body: "#f5f5f5", sleeves: "#f5f5f5", trim: "#132257" },
+};
+const KIT_KEEPER = { body: "#a6e22e", sleeves: "#a6e22e", trim: "#1d3b12" };
+const KIT_UNKNOWN = { body: "#9a958c", sleeves: "#9a958c", trim: "#5d564b" };
+
+// Drawn on a 40 x 36 grid: sleeves first, the body over their inner edge, then the collar.
+const KIT_PATHS = {
+  left: "M13 2.5 L9 4.5 L1.5 9.5 L4.5 16.5 L9.6 14 Z",
+  right: "M27 2.5 L31 4.5 L38.5 9.5 L35.5 16.5 L30.4 14 Z",
+  body: "M13 2.5 Q20 8 27 2.5 L31 4.5 L31 33.5 Q20 35.2 9 33.5 L9 4.5 Z",
+  collar: "M13 2.5 Q20 8 27 2.5",
+};
+
+/** The stripe patterns, once for the page; the cards fill with url(#kit-XXX). */
+function initKits() {
+  el("kitDefs").innerHTML = Object.entries(KITS).filter(([, k]) => k.stripes).map(([team, k]) =>
+    `<pattern id="kit-${team}" patternUnits="userSpaceOnUse" width="6.4" height="36">
+       <rect width="3.2" height="36" fill="${k.stripes[0]}"/><rect x="3.2" width="3.2" height="36" fill="${k.stripes[1]}"/>
+     </pattern>`).join("");
+}
+
+function kitSVG(p) {
+  const k = p.pos === "GK" ? KIT_KEEPER : (KITS[p.team] || KIT_UNKNOWN);
+  const body = k.stripes ? `url(#kit-${p.team})` : k.body;
+  const line = `stroke="${k.trim}" stroke-width="1.1" stroke-linejoin="round"`;
+  return `<svg class="kit" viewBox="0 0 40 36" aria-hidden="true">
+    <path d="${KIT_PATHS.left}" fill="${k.sleeves}" ${line}/>
+    <path d="${KIT_PATHS.right}" fill="${k.sleeves}" ${line}/>
+    <path d="${KIT_PATHS.body}" fill="${body}" ${line}/>
+    <path d="${KIT_PATHS.collar}" fill="none" stroke="${k.trim}" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
+}
+
 function cardHTML(pick) {
   const p = byId.get(pick.id);
   const isC = state.captain === pick.id, isV = state.vice === pick.id;
@@ -3085,6 +3442,7 @@ function cardHTML(pick) {
       <button class="badge c ${isC ? "is-on" : ""}" data-cap="${pick.id}" title="Captain">C</button>
       <button class="badge v ${isV ? "is-on" : ""}" data-vice="${pick.id}" title="Vice-captain">V</button>` : ""}
     <button class="badge x" data-remove="${pick.id}" title="Remove from squad">×</button>
+    ${kitSVG(p)}
     <div class="nm">${p.name}</div>
     <div class="meta"><span>${p.team}</span><span>${p.pos}</span></div>
     <div class="fix">${fixtureText(p)}</div>
@@ -3277,7 +3635,7 @@ function renderTrack() {
   const all = t.games.find(g => g.gw === "all");
   const weeks = t.games.filter(g => g.gw !== "all");
   const span = t.gws.length > 1 ? `GW${t.gws[0]}–${t.gws[t.gws.length - 1]}` : `GW${t.gws[0]}`;
-  el("trackSpan").textContent = `${span} · ${t.gws.length} reviewed`;
+  el("trackSpan").textContent = span;
 
   const closer = all.model_mae < all.fpl_mae ? "closer than" : all.model_mae > all.fpl_mae ? "further off than" : "level with";
   const won = weeks.filter(g => g.model_mae < g.fpl_mae).length;
@@ -3571,11 +3929,31 @@ function staleHTML() {
     Run <code>fpl serve</code> again for current numbers.</span></div>`;
 }
 
+/**
+ * The call bar: a verdict, the sentence behind it, and — when there is a move
+ * worth making — its gain and the button that makes it.
+ */
+function callHTML(kind, head, why, move = null, net = null) {
+  const act = move
+    ? `<div class="act"><div class="gain">+${(net ?? move.gain).toFixed(1)}<small>pts</small></div>
+         <button class="btn btn-primary" data-move="${move.outId}:${move.inId}">Make this transfer</button></div>`
+    : "";
+  return `<div class="callbar ${kind}">
+    <div><span class="lbl">The call</span><span class="head">${head}</span></div>
+    <div class="why">${why}</div>${act}</div>`;
+}
+
 function renderAdvice() {
   const box = el("advice");
+  const call = el("call");
 
   if (state.picks.length !== RULES.squadSize) {
-    box.innerHTML = staleHTML() + `<div class="empty">Fill all 15 places to get transfer suggestions.</div>`;
+    const left = RULES.squadSize - state.picks.length;
+    call.innerHTML = staleHTML() + callHTML("build", "Build your XV",
+      `Pick ${left} more player${left === 1 ? "" : "s"} from the pool on the right — or start from a
+       <b>Wildcard draft</b> — and the call on your transfers appears here.`);
+    box.innerHTML = `<div class="empty">Fill all 15 places to get transfer suggestions.</div>`;
+    el("countTransfers").textContent = "";
     return;
   }
 
@@ -3604,35 +3982,32 @@ function renderAdvice() {
   );
   const ftPhrase = `${nextWeekFts} free transfer${nextWeekFts === 1 ? "" : "s"}`;
 
+  const names = m => `<b>${byId.get(m.outId).name} → ${byId.get(m.inId).name}</b>`;
   let verdict;
   if (!best) {
-    verdict = `<div class="verdict hold"><span class="head">Roll it</span>
-      <span class="why">Nothing in your price range improves this squad over ${window}.
-      Bank it and you start GW${currentGw() + 1} with ${ftPhrase}.</span></div>`;
+    verdict = callHTML("hold", "Roll it",
+      `Nothing in your price range improves this squad over ${window}.
+       Bank it and you start GW${currentGw() + 1} with ${ftPhrase}.`);
   } else if (nextHit > 0 && net <= 0) {
-    verdict = `<div class="verdict hold"><span class="head">You are done</span>
-      <span class="why">No free transfer left, so another move costs
-      <b>${nextHit} points</b>. The best one available gains
-      <b>+${best.gain.toFixed(1)}</b> over ${window}, which nets
-      <b>${net.toFixed(1)}</b> — it loses you points. Leave it, and you get
-      ${ftPhrase} for GW${currentGw() + 1}.</span></div>`;
+    verdict = callHTML("hold", "You are done",
+      `No free transfer left, so another move costs <b>${nextHit} points</b>. The best one
+       available, ${names(best)}, gains <b>+${best.gain.toFixed(1)}</b> over ${window}, which nets
+       <b>${net.toFixed(1)}</b> — it loses you points. Leave it, and you get ${ftPhrase} for
+       GW${currentGw() + 1}.`);
   } else if (nextHit > 0) {
-    verdict = `<div class="verdict go"><span class="head">Only with a hit</span>
-      <span class="why"><b>${byId.get(best.outId).name} → ${byId.get(best.inId).name}</b>
-      gains <b>+${best.gain.toFixed(1)}</b> over ${window} but costs ${nextHit} points,
-      netting <b>+${net.toFixed(1)}</b>. Worth it only if you believe the numbers —
-      one gameweek of evidence is thin.</span></div>`;
+    verdict = callHTML("go", "Only with a hit",
+      `${names(best)} gains <b>+${best.gain.toFixed(1)}</b> over ${window} but costs ${nextHit} points,
+       netting <b>+${net.toFixed(1)}</b>. Worth it only if you believe the numbers — one gameweek of
+       evidence is thin.`, best, net);
   } else if (best.gain < WORTH_A_TRANSFER) {
-    verdict = `<div class="verdict hold"><span class="head">Probably roll it</span>
-      <span class="why">The best move on the board is worth about
-      <b>+${best.gain.toFixed(1)} pts</b> across ${window}${weekly(best.gain)}.
-      That is inside the noise. Holding gives you ${ftPhrase} next week and more
-      information.</span></div>`;
+    verdict = callHTML("hold", "Probably roll it",
+      `The best move on the board, ${names(best)}, is worth about <b>+${best.gain.toFixed(1)} pts</b>
+       across ${window}${weekly(best.gain)}. That is inside the noise. Holding gives you ${ftPhrase}
+       next week and more information.`);
   } else {
-    verdict = `<div class="verdict go"><span class="head">Use it</span>
-      <span class="why"><b>${byId.get(best.outId).name} → ${byId.get(best.inId).name}</b>
-      is worth about <b>+${best.gain.toFixed(1)} pts</b> over ${window}${weekly(best.gain)}
-      and fits your £${money(bank())}m bank.</span></div>`;
+    verdict = callHTML("go", "Use it",
+      `${names(best)} is worth about <b>+${best.gain.toFixed(1)} pts</b> over ${window}${weekly(best.gain)}
+       and fits your £${money(bank())}m bank.`, best);
   }
 
   const list = moves.length
@@ -3653,7 +4028,11 @@ function renderAdvice() {
       }).join("") + `</div>`
     : "";
 
-  box.innerHTML = staleHTML() + verdict + list + pairsHTML;
+  call.innerHTML = staleHTML() + verdict;
+  box.innerHTML = list + pairsHTML ||
+    `<div class="empty">Nothing in your price range improves this squad over ${window}.</div>`;
+  el("countTransfers").textContent = moves.length ? String(moves.length) : "";
+  el("countTransfers").classList.toggle("hot", !!best && best.gain >= WORTH_A_TRANSFER && net > 0);
 }
 
 function renderArmbands() {
@@ -3835,9 +4214,14 @@ function render() {
   renderLog();
   renderPool();
   if (el("sheet").open) renderSheet();
+  renderTray();
+  const toPlay = state.picks.length === RULES.squadSize
+    ? Object.values(chipVerdicts()).filter(v => v.verdict === "play").length : 0;
+  el("countChips").textContent = toPlay ? `${toPlay} to play` : "";
+  el("countChips").classList.toggle("hot", toPlay > 0);
   el("confirm").disabled = !isLegal();
   el("confirm").textContent = state.confirmedForGw === currentGw()
-    ? `Saved for GW${currentGw()}`
+    ? (transfersMade() ? `Save changes` : `Saved for GW${currentGw()}`)
     : `Save as my GW${currentGw()} team`;
   el("gwLabel").textContent = `GW${currentGw()}`;
 
@@ -3910,6 +4294,10 @@ function initChrome() {
 document.addEventListener("click", e => {
   const t = e.target;
 
+  const wt = t.closest("[data-tab]");
+  if (wt) return showTab(wt.dataset.tab);
+  if (t.closest("[data-undo], #undo")) { t.closest(".toast")?.remove(); return undo(); }
+
   // Before the card's own handler: opening a sheet must not also pick the card up.
   const sheetBtn = t.closest("[data-sheet]");
   if (sheetBtn) { e.stopPropagation(); return openSheet(Number(sheetBtn.dataset.sheet)); }
@@ -3925,37 +4313,48 @@ document.addEventListener("click", e => {
   if (t.closest("#sheet [data-add], #sheet [data-remove]")) el("sheet").close();
 
   const add = t.closest("[data-add]");
-  if (add) return addPlayer(Number(add.dataset.add));
+  if (add) { const id = Number(add.dataset.add); return withUndo(`Added ${byId.get(id).name}`, () => addPlayer(id)); }
 
   const rm = t.closest("[data-remove]");
-  if (rm) { e.stopPropagation(); return removePlayer(Number(rm.dataset.remove)); }
+  if (rm) {
+    e.stopPropagation();
+    const id = Number(rm.dataset.remove);
+    return withUndo(`Removed ${byId.get(id).name}`, () => removePlayer(id));
+  }
 
   const cap = t.closest("[data-cap]");
   if (cap) {
     e.stopPropagation();
     const id = Number(cap.dataset.cap);
-    if (state.vice === id) state.vice = state.captain;
-    state.captain = state.captain === id ? null : id;
-    return render();
+    return withUndo(() => (state.captain === id ? `${byId.get(id).name} is captain` : "Captain removed"), () => {
+      if (state.vice === id) state.vice = state.captain;
+      state.captain = state.captain === id ? null : id;
+      render();
+    });
   }
 
   const vice = t.closest("[data-vice]");
   if (vice) {
     e.stopPropagation();
     const id = Number(vice.dataset.vice);
-    if (state.captain === id) state.captain = state.vice;
-    state.vice = state.vice === id ? null : id;
-    return render();
+    return withUndo(() => (state.vice === id ? `${byId.get(id).name} is vice-captain` : "Vice-captain removed"), () => {
+      if (state.captain === id) state.captain = state.vice;
+      state.vice = state.vice === id ? null : id;
+      render();
+    });
   }
 
   const mv = t.closest("[data-move]");
   if (mv) {
     const [outId, inId] = mv.dataset.move.split(":").map(Number);
-    return applyMove({ outId, inId });
+    return withUndo(`${byId.get(outId).name} → ${byId.get(inId).name}`, () => applyMove({ outId, inId }));
   }
 
   const chip = t.closest("[data-chip]");
-  if (chip && !chip.disabled) return toggleChip(chip.dataset.chip);
+  if (chip && !chip.disabled) {
+    const c = CHIPS.find(x => x.id === chip.dataset.chip);
+    return withUndo(() => (state.activeChip === c.id ? `${c.name} played` : `${c.name} cancelled`), () => toggleChip(c.id));
+  }
 
   const slot = t.closest("[data-slot]");
   if (slot) { filters.pos = slot.dataset.slot; initChrome(); return render(); }
@@ -3965,7 +4364,10 @@ document.addEventListener("click", e => {
     const id = Number(card.dataset.pick);
     if (selectedPick === null) selectedPick = id;
     else if (selectedPick === id) selectedPick = null;
-    else return attemptSwap(selectedPick, id);
+    else {
+      const a = byId.get(selectedPick).name, b = byId.get(id).name, from = selectedPick;
+      return withUndo(`Swapped ${a} and ${b}`, () => attemptSwap(from, id));
+    }
     return render();
   }
 
@@ -3982,6 +4384,10 @@ document.addEventListener("click", e => {
 
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && selectedPick !== null) { selectedPick = null; render(); }
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || el("sheet").open;
+  if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); return undo(); }
+  if (!typing && e.key === "/") { e.preventDefault(); return el("search").focus(); }
+  if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && /^[1-4]$/.test(e.key)) return showTab(TABS[Number(e.key) - 1]);
   if (e.key === "Enter" || e.key === " ") {
     // Only the card itself: its buttons (armbands, the sheet) activate on their own.
     const card = e.target.closest?.("[data-pick]");
@@ -4007,9 +4413,9 @@ el("metric").addEventListener("change", e => {
   render();
 });
 el("copySquad").addEventListener("click", copySquad);
-el("autoSquad").addEventListener("click", autoPickSquad);
-el("confirm").addEventListener("click", lockInSquad);
-el("reset").addEventListener("click", resetAll);
+el("autoSquad").addEventListener("click", () => withUndo("Wildcard draft", autoPickSquad));
+el("confirm").addEventListener("click", () => withUndo(`Saved as your GW${currentGw()} team`, lockInSquad));
+el("reset").addEventListener("click", () => withUndo("Squad reset", resetAll));
 el("saveConfig").addEventListener("click", saveConfig);
 // Typing a bank or transfer count takes effect on the page straight away, so
 // affordability and hit checks are right before anything is written to disk.
@@ -4028,7 +4434,9 @@ el("setupFt").addEventListener("change", () => {
   render();
 });
 
+initKits();
 initChrome();
+showTab(activeTab);
 renderTrack();
 if (startedFromPreset || adoptedNewerBuild) applyBestXI();   // gives the loaded squad a legal XI and a captain
 render();
