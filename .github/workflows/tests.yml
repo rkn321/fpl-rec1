@@ -1,0 +1,42 @@
+# The test suite on every push and pull request.
+#
+# Offline by design: the API client is tested against a fake session, the
+# models and leakage checks against a synthetic season, and the tests that
+# need real data skip when data/cache/ is empty, as it always is here.
+#
+# Two Pythons: the oldest the README promises (3.11) and the one the project
+# is developed on (3.14), so neither end of the range drifts unnoticed.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Test
+        run: python -m pytest

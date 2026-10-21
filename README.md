@@ -443,7 +443,7 @@ src/
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
 tests/                    154 tests; leakage checks on synthetic and real data
-.github/workflows/        snapshot.yml — captures before every deadline, laptop or not
+.github/workflows/        snapshot.yml captures before every deadline; tests.yml runs the suite
 data/                     parquet + API cache (gitignored)
 ```
 
@@ -845,6 +845,11 @@ python -m pytest
 Tests that need real data skip cleanly when `data/cache/` is cold, so the suite
 runs offline. Populate the cache with `python -m src.cli build-features` to
 enable them.
+
+`.github/workflows/tests.yml` runs the same suite on every push and pull
+request, on Python 3.11 (the oldest supported) and 3.14 (what the project is
+developed on). There the cache is always cold, so it is the offline suite —
+140 tests, with the 14 that need real data skipped.
 
 ## Current state and next step
 
