@@ -2,6 +2,7 @@
 
     python -m src.cli build-features    # pull data, build + store the feature frame
     python -m src.cli backtest          # walk-forward baselines
+    python -m src.cli backtest-fixtures # Elo against FPL difficulty, weeks ahead
     python -m src.cli predict           # expected points for the next gameweek
     python -m src.cli export-frontend   # build the squad / transfer page
     python -m src.cli serve             # build it, then serve it so it can save your squad
@@ -99,6 +100,34 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     out = config.processed_dir / f"backtest_{season}.csv"
     results["per_gw_all"].to_csv(out, index=False)
     print(f"\nper-gameweek detail: {out}")
+    return 0
+
+
+def cmd_backtest_fixtures(args: argparse.Namespace) -> int:
+    from .data.fpl_api import FPLClient
+    from .evaluate_fixtures import run
+
+    config = load_config(args.config, use_local=not args.no_local)
+    df, _ = pipeline.load_processed(config)
+    seasons = args.season or [s for s in config.season_history if s > min(df["season"])]
+    result = run(df, config, seasons, pipeline.team_ids(config, df, FPLClient(config)))
+    summary = result["summary"]
+    if summary.empty:
+        print("nothing to score: every season needs an earlier one to fit on")
+        return 1
+
+    pd.set_option("display.width", 200)
+    print("\nFixture ratings, weeks ahead — squared error per start (lower is better)")
+    print("Lead 0 is the week the odds cover; 1-4 are the weeks after it.")
+    print("FPL's difficulty here is as FPL later revised it, so it has seen the results.\n")
+    cols = ["season", "lead", "starts", "mse_none", "mse_fdr", "mse_elo",
+            "rank_none", "rank_fdr", "rank_elo", "elo_minus_fdr_mse", "ci_low", "ci_high"]
+    print(summary[cols].round(3).to_string(index=False))
+
+    config.ensure_dirs()
+    out = config.processed_dir / "backtest_fixtures.csv"
+    summary.to_csv(out, index=False)
+    print(f"\nwritten: {out}")
     return 0
 
 
@@ -341,6 +370,16 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the trained component model (much faster)",
     )
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_btf = sub.add_parser(
+        "backtest-fixtures", parents=[common],
+        help="score Elo against FPL difficulty as a fixture weighting, 0-4 weeks ahead",
+    )
+    p_btf.add_argument(
+        "--season", action="append", default=None,
+        help="season to test (repeatable; default: every history season with an earlier one to fit on)",
+    )
+    p_btf.set_defaults(func=cmd_backtest_fixtures)
 
     p_pred = sub.add_parser("predict", parents=[common], help="expected points for the upcoming gameweek")
     p_pred.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")

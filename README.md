@@ -198,6 +198,14 @@ under `data/cache/`, so later runs are fast.
 ```
 
 ```powershell
+.\fpl backtest-fixtures
+```
+
+Scores the page's fixture weighting — Elo against FPL's difficulty rating —
+from the week the odds cover to four weeks past it. See
+[fixtures beyond next week](#fixtures-beyond-next-week-elo-not-fpls-difficulty).
+
+```powershell
 .\fpl predict
 ```
 
@@ -409,13 +417,14 @@ config.yaml               all settings: seasons, paths, API TTLs, windows
 config.local.yaml         your squad and bank (gitignored; see .example)
 src/
   config.py               config loading
-  cli.py                  build-features / backtest / predict / export-frontend / serve / snapshot / review
+  cli.py                  build-features / backtest / backtest-fixtures / predict / export-frontend / serve / snapshot / review
   predict.py              the one predict path; stores each gameweek's pre-deadline prediction
   review.py               `fpl review`: a played gameweek against that prediction, and the season log
   serve.py                local helper behind `fpl serve` — lets the page write config.local.yaml
   pipeline.py             assemble + store the feature frame
   metrics.py              MAE, RMSE, Spearman (overall and within position)
   evaluate.py             walk-forward backtest harness
+  evaluate_fixtures.py    `fpl backtest-fixtures`: Elo against FPL difficulty, weeks ahead
   data/
     schema.py             the canonical player_gameweek schema
     fpl_api.py            official API client — disk cache, retry/backoff
@@ -425,6 +434,7 @@ src/
     cloud_snapshots.py    downloads the captures GitHub Actions takes
     understat.py          Phase 4 — stub with design notes
     odds.py               betting odds -> each side's expected goals
+    elo.py                team Elo ratings from results, built the ClubElo way
     injuries.py           Phase 4 — stub
   features/
     rolling.py            lagged rolling helpers
@@ -442,7 +452,7 @@ src/
   optimise/squad.py       Phase 5 — stub
 fpl.cmd                   CLI wrapper — .\fpl <command>
 frontend/template.html    the page source; squad-picker.html is generated
-tests/                    154 tests; leakage checks on synthetic and real data
+tests/                    ~180 tests; leakage checks on synthetic and real data
 .github/workflows/        snapshot.yml captures before every deadline; tests.yml runs the suite
 data/                     parquet + API cache (gitignored)
 ```
@@ -457,6 +467,7 @@ data/                     parquet + API cache (gitignored)
 | [vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League) | historical seasons, with Understat xG merged | once per season (immutable) |
 | `fpl snapshot` (`bootstrap-static/` + `fixtures/`) | pre-deadline `xP`, prices, availability, set-piece orders, difficulty ratings | every six hours, on GitHub Actions and optionally locally |
 | FPL API `event/{gw}/live/` | actual points by scoring term, for `fpl review` | five minutes |
+| [football-data.co.uk](https://www.football-data.co.uk/) | match odds (the model), and results since 2016-17 for the Elo ratings (the page) | six hours in season; finished seasons once |
 
 Everything is cached to `data/cache/`. TTLs are per endpoint in `config.yaml`;
 the client retries with exponential backoff and jitter, honours `Retry-After`,
@@ -542,6 +553,14 @@ by 0.004 only on 2025-26, which that table was fitted to. Each position's cell
 is pulled toward the all-position figure by weight n / (n + 300) on its number
 of starts; without that pull the difficulty-5 cells, a few hundred matches
 each, made the position tables lose in 2023-24.
+
+**Superseded, and overstated.** The ratings this table was measured on are the
+ones FPL rewrote after the results were in, and the swing it found is mostly
+that hindsight: rated before kickoff, a fixture is worth 0.03–0.06 in squared
+error per start (Elo, and the market itself), not 0.23, and a defender's honest swing is about 0.75 to 1.26, not
+0.64 to 1.39. The page now weights fixtures by Elo and keeps this table only as
+a fallback — see [fixtures beyond next
+week](#fixtures-beyond-next-week-elo-not-fpls-difficulty).
 
 **How far to shrink current form toward a prior.** This one was wrong. The
 weight was set at 4 gameweeks on the reasoning that two games is too little to
@@ -677,6 +696,61 @@ blank, `predict` falls back to the same model fitted without them — the varian
 measured above — and the page and `fpl predict` say so. Rebuild once the week's
 odds are out.
 
+### Fixtures beyond next week: Elo, not FPL's difficulty
+
+The odds only reach the coming gameweek. Every week after it — the 2–5 week
+horizon, chip timing, the ticker — was weighted by FPL's 1–5 difficulty rating
+through the table above. The plan was to replace that with ClubElo's ratings,
+but ClubElo's API went dark in October 2026 (`api.clubelo.com` answers 502 and
+its fixtures endpoint calls itself "deactivated"), so `src/data/elo.py` rebuilds
+them the ClubElo way from the football-data.co.uk results already downloaded
+for the odds: expected score from the rating gap plus home advantage, a move of
+K × √(goal margin) × surprise after each match, a light pull to the mean each
+summer, promoted sides seated where the relegated ones finished. K = 12.5, home
+advantage 45 and the pull were chosen on 2017-18 to 2021-22, before any season
+used here; the match-by-match Brier score is 0.156 against 0.190 for always
+guessing the average. A rating used for a deadline only knows matches played on
+an earlier day.
+
+`fpl backtest-fixtures` holds a player's usual rate fixed (his points per start
+before the as-of deadline) and scores each fixture weighting on every start
+0–4 gameweeks later, with tables fitted only on earlier seasons. Squared error
+per start, leads 1–4, 2023-24 to 2025-26 weighted together:
+
+| weighting | squared error | within-position ranking |
+|---|---|---|
+| none | 10.589 | 0.104 |
+| Elo, as of the deadline | 10.558 | 0.142 |
+| FPL difficulty, as recorded | **10.342** | **0.155** |
+
+On its face FPL's rating wins, in every season and at every lead (Elo minus
+FPL +0.13 to +0.31, intervals clear of zero). It cannot be taken at face value.
+The historical record holds the difficulty ratings as FPL last revised them,
+after the results — and given the same rate, those ratings beat **the betting
+market's own pre-match view** on 2025-26 (10.47 against 10.68 at lead 0). No
+rating set before kickoff does that. The revisions are real: between the GW5 and
+GW6 deadlines of 2026-27, FPL changed 37 of the 180 difficulty ratings on GW5–13.
+
+The fair test is what each rating said before kickoff, against the market at
+kickoff. The snapshots hold FPL's ratings as they stood at each deadline since
+GW5. Rank correlation with the market's goal difference:
+
+| | at the deadline (n=60) | set 1–2 weeks earlier (n=60) | 2022-23 to 2025-26, as recorded |
+|---|---|---|---|
+| FPL difficulty | −0.65 | −0.57 | −0.63 (with hindsight) |
+| Elo | +0.86 | **+0.87** | **+0.95** |
+
+So the page weights fixtures by Elo: a line per position, a + b × gap with
+the gap capped at ±300, fitted on every completed season (eight bins did no
+better and were not monotone). It is a smaller effect than the old table
+claimed — ignoring fixtures entirely costs only 0.03 per start against Elo,
+0.06 against the market where it exists — and Elo's honest swing is about 0.75–1.26 for a defender and
+0.86–1.14 for a midfielder.
+
+One loose end this exposes: the component model's `team_difficulty` features
+are trained on the same revised history, so it too learned a fixture effect
+stronger than the ratings will show at a deadline.
+
 ### Against the crowd
 
 Does the model pick better than FPL managers do? Each gameweek's ten most-bought
@@ -805,7 +879,24 @@ conceded or by points, all give mean gaps between −0.03 and +0.01. The reverse
 does not hold — within a form band, static difficulty still separates 1.22 from
 0.82 — so the rating carries information form does not, and FPL's own revisions
 already fold in whatever form matters. The page keeps the measured difficulty
-multipliers.
+multipliers. *Since found to be compromised:* the "static" ratings in this test
+were FPL's after-the-fact revisions, which have seen the form being tested
+([fixtures beyond next week](#fixtures-beyond-next-week-elo-not-fpls-difficulty)),
+so the verdict deserves a re-test against Elo.
+
+**Head-to-head history.** Prompted by a content creator's table of goal
+involvements and clean sheets for each pairing of clubs. Measured on every
+match since 2022-23 with at least three earlier meetings (1,562 team-matches),
+against the betting market's pre-match view of the same match. A side's
+clean-sheet record against this opponent correlates +0.05 with keeping one,
+against +0.23 for the market; with the market taken out, −0.04 (noise is ±0.05).
+Goals: +0.02 beyond the market. For players — attackers with two or more
+earlier meetings and 900 prior minutes, 5,854 starts — a goal-involvement rate
+against this opponent above his own usual rate predicts +0.03 of the same
+excess (noise ±0.03); the fifth with the best records against an opponent,
++0.58 involvements per 90 above their usual, scored −0.002 above it. What a
+head-to-head record knows, the odds and the player's own rate already do. Not
+adopted, and no new data source needed to check: it is all in the feature frame.
 
 **Shrinking the bonus term for short samples.** Prompted by a promoted-side
 forward handed 1.93 expected bonus off four appearances, then blanking while
