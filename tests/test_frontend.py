@@ -117,6 +117,23 @@ def test_template_carries_the_data_placeholder() -> None:
         assert tag not in lowered, f"template should not contain {tag}"
 
 
+def test_no_name_is_declared_twice_at_the_top_of_the_script() -> None:
+    """A second `function x` silently replaces the first, with no error anywhere.
+
+    That happened once: a badge helper named `availability` replaced the
+    projections' function of the same name, every transfer candidate then
+    failed `availability(c) > 0`, and the page advised rolling for everyone.
+    (`const` and `let` twice would at least throw; they are checked anyway.)
+    """
+    import re
+    from collections import Counter
+
+    script = TEMPLATE_PATH.read_text(encoding="utf-8").split("<script>", 1)[1]
+    names = re.findall(r"(?m)^(?:async\s+)?function\s+(\w+)|^(?:const|let|var)\s+(\w+)\s*=", script)
+    counts = Counter(a or b for a, b in names)
+    assert not [n for n, c in counts.items() if c > 1], counts.most_common(3)
+
+
 def test_team_defence_joins_seasons_on_short_name() -> None:
     """Clubs are matched across seasons by short name, since ids are reassigned.
 

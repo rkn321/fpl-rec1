@@ -3042,7 +3042,10 @@ const ROTATION_P60 = 0.6;
 const BENCH_P_PLAY = 0.3;
 const STATUS_SHORT = { injured: "INJ", suspended: "SUS", unavailable: "OUT", ineligible: "N/A" };
 
-function availability(p) {
+// Not `availability`: that name is the projections' chance of being available
+// (a number), and a second declaration silently replaces the first — which
+// once left every transfer candidate failing `availability(c) > 0`.
+function availabilityBadge(p) {
   const pct = x => `${Math.round(x * 100)}%`;
   if (p.status === "doubtful") {
     return { cls: "doubtful", text: p.chance !== null ? `${p.chance}%` : "?",
@@ -3068,7 +3071,7 @@ const availabilityPill = a => (a ? `<span class="pill ${a.cls}" title="${a.title
 function cardHTML(pick) {
   const p = byId.get(pick.id);
   const isC = state.captain === pick.id, isV = state.vice === pick.id;
-  const avail = availability(p);
+  const avail = availabilityBadge(p);
 
   const swappable = selectedPick && selectedPick !== pick.id;
   const cls = ["card"];
@@ -3216,7 +3219,7 @@ function renderSheet() {
       ${meterHTML("Expected minutes", `${Math.round(w.expected_minutes)}`, w.expected_minutes / 90)}
     </div>
     ${(() => {
-      const a = availability(p);
+      const a = availabilityBadge(p);
       return a && a.cls === "rot"
         ? `<div class="note">${availabilityPill(a)} ${a.text === "BENCH"
             ? `Under ${Math.round(BENCH_P_PLAY * 100)}% to play at all — a squad filler, not a starter.`
@@ -3805,7 +3808,7 @@ function renderPool() {
     const owned = !!pickOf(p.id);
     const why = owned ? "In your squad" : canAdd(p);
     return `<tr class="${owned ? "is-owned" : ""}">
-      <td><div class="p-name"><button class="sheet-open" data-sheet="${p.id}" title="Open ${p.name}'s sheet">${p.name}</button>${availabilityPill(availability(p))}</div><div class="p-sub">${p.team} · ${p.pos}</div></td>
+      <td><div class="p-name"><button class="sheet-open" data-sheet="${p.id}" title="Open ${p.name}'s sheet">${p.name}</button>${availabilityPill(availabilityBadge(p))}</div><div class="p-sub">${p.team} · ${p.pos}</div></td>
       <td>${fixtureText(p)}</td>
       <td class="num">${money(p.price)}</td>
       <td class="num" ${metric === "ep" ? 'style="color:var(--accent);font-weight:600"' : ""}>${sheetButton(p, p.ep.toFixed(1))}</td>
