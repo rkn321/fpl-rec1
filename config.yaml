@@ -72,7 +72,9 @@ squad:
   horizon: 5
 
   # Your FPL team id — the number in the URL when you view your team on
-  # fantasy.premierleague.com (…/entry/1234567/…). Optional. With it, `fpl
+  # fantasy.premierleague.com (…/entry/1234567/…). Optional. With it, every
+  # build imports your squad, bank, purchase prices and chips from FPL as they
+  # stood at the last deadline (the names above become the fallback), and `fpl
   # review` scores the XI, captain and bench you actually fielded; without it,
   # it reviews the 15 above as the model would have started them.
   team_id: null

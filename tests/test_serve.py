@@ -297,3 +297,65 @@ def test_live_endpoint_reports_an_unreachable_api_as_502(server):
             assert json.loads(err.read())["ok"] is False
     finally:
         serve._Handler.client = None
+
+
+def test_a_team_id_alone_is_saved_without_touching_the_squad(base):
+    config = load_config(base)
+    serve.write_local(config, good_payload())
+    serve.write_local(config, {"team_id": "1234567"})
+    reloaded = load_config(base)
+    assert reloaded.squad_team_id == 1234567
+    assert reloaded.squad_players == FIFTEEN          # untouched
+    assert serve.read_local(config)["squad"]["team_id"] == 1234567
+
+
+@pytest.mark.parametrize("bad", [{"team_id": "abc"}, {"team_id": 0}, {"team_id": True}, {"team_id": -5}])
+def test_team_ids_must_be_positive_numbers(bad):
+    with pytest.raises(ValueError):
+        serve._validate(bad)
+
+
+class EntryClient:
+    """FPL's team endpoints for one small, Free-Hit-free team."""
+
+    def next_gw(self):
+        return 8
+
+    def entry(self, team_id):
+        if team_id != 42:
+            raise RuntimeError("404")
+        return {"name": "Answer XI", "started_event": 1}
+
+    def entry_history(self, team_id):
+        return {"current": [{"event": 7, "event_transfers": 0, "event_transfers_cost": 0, "value": 1000}], "chips": []}
+
+    def entry_transfers(self, team_id):
+        return []
+
+    def entry_picks(self, team_id, gw):
+        return {"picks": [{"element": 1, "position": 1}], "entry_history": {"bank": 5}}
+
+    def players(self):
+        import pandas as pd
+        return pd.DataFrame({"id": [1], "now_cost": [50]})
+
+    def element_summary(self, pid):
+        return {"history": [{"round": 1, "value": 45}]}
+
+
+def test_entry_endpoint_imports_and_reports_failures(server):
+    serve._Handler.client = EntryClient()
+    try:
+        status, out = _get(f"{server}/api/entry?team_id=42")
+        assert status == 200 and out["ok"] is True
+        assert out["team"]["name"] == "Answer XI" and out["team"]["gw"] == 7
+        assert out["team"]["bank"] == 5 and out["team"]["buy_prices"] == {"1": 45}
+
+        for query, code in (("team_id=abc", 400), ("", 400), ("team_id=7", 502)):
+            try:
+                urllib.request.urlopen(f"{server}/api/entry?{query}", timeout=5)
+                assert False, f"expected {code} for {query!r}"
+            except urllib.error.HTTPError as err:
+                assert err.code == code
+    finally:
+        serve._Handler.client = None

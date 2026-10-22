@@ -98,10 +98,13 @@ opens the page by itself. The first run takes a little while, because it
 downloads the latest player data and builds the predictions.
 
 **The first time**, the page shows an empty pitch and a box saying **"First
-time here?"**. Pick your 15 players from the list on the right, type your
-**bank** and **free transfers** into the box, and click **Save team**. That is
-it — your team is saved on your laptop, in a file called `config.local.yaml`
-that only you have.
+time here?"**. Type your **FPL team ID** — the number in your team's web
+address on fantasy.premierleague.com, as in `…/entry/1234567/event/7` — and
+click **Import**. Your squad, bank and chips come straight from FPL, and the ID
+is saved on your laptop, in a file called `config.local.yaml` that only you
+have, so every later run imports your team again by itself. (No team ID? Pick
+your 15 from the list on the right, type your bank and free transfers, and
+click **Save team** instead.)
 
 ### Every time after
 
@@ -340,6 +343,18 @@ updates them after you make transfers. A browser page cannot write to disk on
 its own, which is what the small helper behind `serve` is for — it listens on
 `127.0.0.1` only and stops when you close the terminal (Ctrl+C).
 
+**Importing your team.** With `squad.team_id` set — typed into the strip and
+**Import**ed, or in `config.local.yaml` — every build takes your team from FPL
+as it stood at the last deadline (`src/data/entry.py`): the fifteen, the bank,
+what you paid for each player (so a sale banks FPL's selling price, half the
+rise, not today's price), the chips you have played and each gameweek's
+transfers and hits. If the last gameweek was a Free Hit it takes the squad that
+reverts. Two things FPL keeps private: transfers you make in its app for the
+coming gameweek, until that deadline passes, and your free-transfer count,
+which is worked out from your transfer history by the season's rules and can be
+corrected in the strip. A squad named with `--squad` overrides the import, and
+`--team-id` imports a different team for one run.
+
 That is the whole ritual before a deadline. It runs the pipeline itself, so
 `build-features` is not a prerequisite. If you would rather just open the file
 with no helper running, `.\fpl export-frontend --open` still does that — the
@@ -455,6 +470,7 @@ can still be overridden per run:
 | `--gw 4` | target a specific gameweek instead of the next one |
 | `--model` | which predictor supplies the model xPts column |
 | `--open` | open the page in your browser once built |
+| `--team-id 1234567` | import this FPL team instead of `squad.team_id`, for one run |
 | `--no-local` | ignore `config.local.yaml` — how the committed page is built |
 
 With no squad configured and no `--squad`, the page opens empty and you pick a
@@ -482,6 +498,7 @@ src/
     current.py            the in-progress season, live
     snapshots.py          pre-deadline captures, and the deadline state a rebuild replays
     cloud_snapshots.py    downloads the captures GitHub Actions takes
+    entry.py              your real team, imported by FPL team id
     understat.py          Phase 4 — stub with design notes
     odds.py               betting odds -> each side's expected goals
     elo.py                team Elo ratings from results, built the ClubElo way

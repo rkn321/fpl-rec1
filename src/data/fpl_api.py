@@ -13,7 +13,9 @@ Endpoint map (see the project brief):
     fixtures/                  all fixtures + FPL difficulty ratings
     element-summary/{id}/      per-player gameweek history
     event/{gw}/live/           live per-player stat breakdown
+    entry/{id}/                a manager's summary: name, first gameweek, bank
     entry/{id}/history/        a manager's chips / transfers / ranks
+    entry/{id}/transfers/      every transfer, with the prices paid and received
     entry/{id}/event/{gw}/picks/  a manager's XI, bench and armbands for a gameweek
 """
 
@@ -195,8 +197,16 @@ class FPLClient:
     def event_live(self, gw: int, force: bool = False) -> dict[str, Any]:
         return self.get(f"event/{int(gw)}/live/", force=force)
 
+    def entry(self, team_id: int, force: bool = False) -> dict[str, Any]:
+        """A manager's summary: team name, the gameweek they started, bank at the last deadline."""
+        return self.get(f"entry/{int(team_id)}/", force=force)
+
     def entry_history(self, team_id: int, force: bool = False) -> dict[str, Any]:
         return self.get(f"entry/{int(team_id)}/history/", force=force)
+
+    def entry_transfers(self, team_id: int, force: bool = False) -> list[dict[str, Any]]:
+        """Every transfer a manager has made, with the prices paid and received."""
+        return self.get(f"entry/{int(team_id)}/transfers/", force=force)
 
     def entry_picks(self, team_id: int, gw: int, force: bool = False) -> dict[str, Any]:
         """A manager's XI, bench, armbands and auto-subs for one gameweek."""

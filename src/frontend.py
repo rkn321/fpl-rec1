@@ -24,6 +24,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from .config import Config, load_config
+from .data.entry import ImportedTeam, import_team
 from .data.fpl_api import ELEMENT_TYPE_TO_POSITION, FPLAPIError, FPLClient
 from .models.combine import POINTS_TERMS
 
@@ -474,8 +475,15 @@ def build_player_data(
     squad: list[str] | None = None,
     bank: int | None = None,
     horizon: int = 5,
+    team_id: int | None = None,
 ) -> dict[str, Any]:
-    """Player pool, prices, model expected points and next-gameweek fixtures."""
+    """Player pool, prices, model expected points and next-gameweek fixtures.
+
+    With `team_id`, the squad, bank, free transfers, purchase prices, chips and
+    season so far come from that FPL team as it stood at the last deadline
+    (`src/data/entry.py`); `squad` and `bank` are then the fallback for when
+    FPL cannot be reached.
+    """
     from .predict import predict_gameweek
 
     config = config or load_config()
@@ -510,14 +518,14 @@ def build_player_data(
     rows = []
     for _, p in players.iterrows():
         pid = int(p["id"])
-        team_id = int(p["team"])
+        club_id = int(p["team"])
         rows.append(
             {
                 "id": pid,
                 "name": str(p["web_name"]),
                 "pos": ELEMENT_TYPE_TO_POSITION[int(p["element_type"])],
-                "team": teams.get(team_id, "?"),
-                "teamId": team_id,
+                "team": teams.get(club_id, "?"),
+                "teamId": club_id,
                 # Price in tenths of a million, as the API stores it. All the
                 # money arithmetic stays in integers so 0.1m rounding is exact.
                 "price": int(p["now_cost"]),
@@ -536,7 +544,7 @@ def build_player_data(
                     else int(p["chance_of_playing_next_round"])
                 ),
                 "last": last_season.get(pid),
-                "fixtures": fixtures.get(team_id, []),
+                "fixtures": fixtures.get(club_id, []),
                 "why": (
                     {t: round(float(why.at[pid, t]), 2) for t in BREAKDOWN_TERMS}
                     if why is not None and pid in why.index else None
@@ -544,12 +552,23 @@ def build_player_data(
             }
         )
 
-    preset = resolve_squad(squad, client) if squad else None
+    imported: ImportedTeam | None = None
+    if team_id and gw > 1:
+        try:
+            imported = import_team(client, team_id, gw - 1)
+        except (FPLAPIError, ValueError, KeyError) as exc:
+            log.warning("could not import FPL team %s (%s); using the squad in the config", team_id, exc)
+
+    free_transfers = config.squad_free_transfers
+    if imported:
+        preset, bank, free_transfers = imported.picks, imported.bank, imported.free_transfers
+    else:
+        preset = resolve_squad(squad, client) if squad else None
 
     # Resolve armbands within the squad only: "haaland" should never match some
     # other Haaland-ish name from the wider pool.
     captain_id = vice_id = None
-    if preset and squad:
+    if preset:
         picked = {_normalise(client.players().set_index("id").loc[pid, "web_name"]): pid
                   for pid in preset}
         for name, target in ((config.squad_captain, "c"), (config.squad_vice, "v")):
@@ -588,8 +607,10 @@ def build_player_data(
         "presetSquad": preset,
         "captain": captain_id,
         "vice": vice_id,
-        "freeTransfers": config.squad_free_transfers,
+        "freeTransfers": free_transfers,
         "bank": bank,
+        # The real team's purchase prices, chips and season, when it was imported.
+        "entry": imported.to_json() if imported else None,
         "pricePrior": price_prior(config),
         "teamDefence": team_defence(config, client),
         "seasonGws": 38,
@@ -616,12 +637,13 @@ def export(
     bank: int | None = None,
     horizon: int = 5,
     output: Path | None = None,
+    team_id: int | None = None,
 ) -> Path:
     """Write the self-contained HTML page and return its path."""
     config = config or load_config()
     data = build_player_data(
         config=config, client=client, gw=gw, model=model, squad=squad,
-        bank=bank, horizon=horizon,
+        bank=bank, horizon=horizon, team_id=team_id,
     )
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")

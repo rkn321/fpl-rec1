@@ -669,6 +669,8 @@ select:hover, .filters input[type="search"]:hover { border-color: var(--ink-fain
 .notice.err { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
 .notice.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
 .notice.ok { color: var(--good); background: var(--good-bg); border-color: var(--good); }
+.notice.info { color: var(--ink-muted); background: var(--surface-2); border-color: var(--line-strong); }
+.notice.info b { color: var(--ink); }
 .notice b { font-weight: 650; }
 
 /* Save-to-config strip. Only shown when the page is served by `fpl serve`,
@@ -686,6 +688,8 @@ select:hover, .filters input[type="search"]:hover { border-color: var(--ink-fain
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
   font-family: var(--font-mono); font-size: 13px;
 }
+.setup #setupTeam { width: 104px; }
+.setup .setup-sep { width: 1px; align-self: stretch; background: var(--line-strong); margin: 0 2px; }
 
 /* ------------------------------------------------------------------ chips */
 .chipbar { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 18px 10px; border-top: 1px solid var(--line); }
@@ -1151,6 +1155,9 @@ dialog.sheet::backdrop { background: rgba(12, 16, 14, .45); backdrop-filter: blu
 
     <div class="setup" id="setup" hidden>
       <div class="setup-msg" id="setupMsg"></div>
+      <label for="setupTeam">FPL team ID <input type="text" id="setupTeam" inputmode="numeric" autocomplete="off" placeholder="1234567"></label>
+      <button class="btn" id="importTeam">Import</button>
+      <span class="setup-sep" aria-hidden="true"></span>
       <label for="setupBank">Bank £m <input type="number" id="setupBank" step="0.1" min="0" inputmode="decimal"></label>
       <label for="setupFt">Free transfers <input type="number" id="setupFt" step="1" min="0" max="5" inputmode="numeric"></label>
       <button class="btn btn-primary" id="saveConfig">Save team</button>
@@ -1400,21 +1407,25 @@ function presetSignature() {
 }
 
 /**
- * Start from a squad baked in at build time (`--squad` on the exporter).
+ * A confirmed squad from a description of a team: the squad baked into this
+ * build, or one imported from FPL a moment ago.
  *
  * It loads as an *already confirmed* squad, not a draft: you are mid-season
  * with a real team, so the very next change has to count as a transfer against
  * this week's allowance. Starting it as a draft would quietly hand you a free
  * rebuild.
  */
-function presetState() {
-  if (!Array.isArray(DATA.presetSquad) || !DATA.presetSquad.length) return null;
-  if (DATA.presetSquad.some(id => !byId.has(id))) return null;
+function stateFromTeam(team) {
+  if (!Array.isArray(team.picks) || !team.picks.length) return null;
+  if (team.picks.some(id => !byId.has(id))) return null;
 
   const s = freshState();
-  s.picks = DATA.presetSquad.map(id => ({
+  // What was paid, where FPL told us, so a sale banks FPL's selling price (half
+  // the rise) rather than today's price.
+  const paid = team.buyPrices || {};
+  s.picks = team.picks.map(id => ({
     id,
-    buyPrice: byId.get(id).price,
+    buyPrice: typeof paid[id] === "number" ? paid[id] : byId.get(id).price,
     starting: false,
     benchRank: null,
   }));
@@ -1422,22 +1433,54 @@ function presetState() {
 
   // Transfers already spent this gameweek, so a fresh browser does not hand
   // back an allowance that has been used.
-  if (typeof DATA.freeTransfers === "number") s.freeTransfers = DATA.freeTransfers;
+  if (typeof team.freeTransfers === "number") s.freeTransfers = team.freeTransfers;
 
   // Armbands are yours to choose, so carry them across rebuilds rather than
   // letting the auto-XI reassign them every time the page is regenerated.
-  if (DATA.captain && byId.has(DATA.captain)) s.captain = DATA.captain;
-  if (DATA.vice && byId.has(DATA.vice)) s.vice = DATA.vice;
+  if (team.captain && byId.has(team.captain)) s.captain = team.captain;
+  if (team.vice && byId.has(team.vice)) s.vice = team.vice;
 
   // Your real bank cannot be derived from today's prices — it depends on what
-  // you paid, which this page never sees. When the build supplies it, the
-  // difference is carried as a realised-profit term so `bank()` matches your
-  // actual FPL balance and affordability checks come out right.
-  if (typeof DATA.bank === "number") {
+  // you paid and sold for. When it is supplied, the difference is carried as a
+  // realised-profit term so `bank()` matches your actual FPL balance and
+  // affordability checks come out right.
+  if (typeof team.bank === "number") {
     const impliedFromPrices = RULES.budget - s.picks.reduce((t, p) => t + p.buyPrice, 0);
-    s.realised = DATA.bank - impliedFromPrices;
+    s.realised = team.bank - impliedFromPrices;
   }
-  s.presetSig = presetSignature();
+
+  // An imported team brings its season: chips played, and every gameweek's
+  // transfers and hits.
+  if (team.chipsUsed) s.chipsUsed = { ...team.chipsUsed };
+  if (Array.isArray(team.history)) {
+    s.history = team.history.map(h => ({ gw: h.gw, transfers: h.transfers, hit: h.hit, chip: h.chip || null, value: h.value }));
+    s.totalHits = s.history.reduce((t, h) => t + (h.hit || 0), 0);
+  }
+  if (team.meta) s.imported = team.meta;
+  return s;
+}
+
+/** The team description `fpl serve` and /api/entry send, in the page's terms. */
+function teamFromEntry(e) {
+  return {
+    picks: e.picks,
+    bank: e.bank,
+    freeTransfers: e.free_transfers,
+    buyPrices: Object.fromEntries(Object.entries(e.buy_prices || {}).map(([k, v]) => [Number(k), v])),
+    chipsUsed: e.chips_used,
+    history: e.history,
+    meta: { teamId: e.team_id, name: e.name, gw: e.gw, notes: e.notes || [] },
+  };
+}
+
+/** Start from the squad baked in at build time: imported from FPL, or named in the config. */
+function presetState() {
+  if (!Array.isArray(DATA.presetSquad) || !DATA.presetSquad.length) return null;
+  const base = DATA.entry
+    ? teamFromEntry(DATA.entry)
+    : { picks: DATA.presetSquad, bank: DATA.bank, freeTransfers: DATA.freeTransfers };
+  const s = stateFromTeam({ ...base, captain: DATA.captain, vice: DATA.vice });
+  if (s) s.presetSig = presetSignature();
   return s;
 }
 
@@ -1462,9 +1505,13 @@ if (savedState) {
   if (sig && savedState.presetSig !== sig) {
     const rebuilt = presetState();
     if (rebuilt) {
-      rebuilt.history = Array.isArray(savedState.history) ? savedState.history : [];
-      rebuilt.chipsUsed = savedState.chipsUsed || {};
-      rebuilt.totalHits = savedState.totalHits || 0;
+      // FPL's record of chips and hits wins over this browser's; a squad named
+      // in the config knows neither, so the browser's history carries over.
+      if (!DATA.entry) {
+        rebuilt.history = Array.isArray(savedState.history) ? savedState.history : [];
+        rebuilt.chipsUsed = savedState.chipsUsed || {};
+        rebuilt.totalHits = savedState.totalHits || 0;
+      }
       state = rebuilt;
       adoptedNewerBuild = true;
     }
@@ -3051,9 +3098,14 @@ function renderSetup() {
   const box = el("setup");
   if (!SERVER || configExists === null) { box.hidden = true; return; }
   box.hidden = false;
-  el("setupMsg").innerHTML = configExists
-    ? `Your team is saved in <code>config.local.yaml</code>. Save again after you make transfers.`
-    : `<b>First time here?</b> Pick your 15 players below, set your bank and free transfers, then save your team.`;
+  el("setupMsg").innerHTML = state.imported
+    ? `Your team comes from FPL team <b>${state.imported.teamId}</b> each time the page is built.
+       Free transfers are worked out from your transfer history — correct them here if FPL shows otherwise.`
+    : configExists
+      ? `Your team is saved in <code>config.local.yaml</code>. Save again after you make transfers — or
+         import it from FPL with your team ID.`
+      : `<b>First time here?</b> Enter your FPL team ID — the number in your team's web address — and
+         press Import: your squad, bank and chips come straight from FPL. Or pick your 15 below.`;
 }
 
 async function loadConfig() {
@@ -3065,8 +3117,10 @@ async function loadConfig() {
     const squad = info.squad || {};
     // Pre-fill from the file when there is one; otherwise from what the
     // current squad implies, which is the best guess a new visitor has.
-    el("setupBank").value = squad.bank != null ? Number(squad.bank).toFixed(1) : money(bank());
-    el("setupFt").value = squad.free_transfers != null ? squad.free_transfers : state.freeTransfers;
+    // An imported team's own figures beat whatever was last typed into the file.
+    el("setupBank").value = state.imported || squad.bank == null ? money(bank()) : Number(squad.bank).toFixed(1);
+    el("setupFt").value = state.imported || squad.free_transfers == null ? state.freeTransfers : squad.free_transfers;
+    el("setupTeam").value = squad.team_id ?? state.imported?.teamId ?? "";
   } catch (e) {
     configExists = null;   // no helper behind this page; keep the strip hidden
   }
@@ -3099,6 +3153,8 @@ async function saveConfig() {
     bank: bankM,
     free_transfers: ft,
   };
+  const teamId = el("setupTeam").value.trim();
+  if (/^\d+$/.test(teamId)) payload.team_id = Number(teamId);
 
   let out;
   try {
@@ -3121,6 +3177,47 @@ async function saveConfig() {
   renderSetup();
   render();
   flash("Saved to config.local.yaml.");
+}
+
+/**
+ * Import the real team now, through the helper: the same import a build does
+ * when `squad.team_id` is set, so the page does not have to be rebuilt first.
+ * It can be undone like any other change, and the id is saved so every later
+ * build imports it.
+ */
+async function importTeam() {
+  const raw = el("setupTeam").value.trim();
+  if (!/^\d+$/.test(raw)) {
+    return flash("Your team ID is the number in your FPL team's web address: …/entry/1234567/event/7.");
+  }
+  const btn = el("importTeam");
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  try {
+    const res = await fetch(`/api/entry?team_id=${raw}`, { cache: "no-store" });
+    const out = await res.json();
+    if (!res.ok || !out.ok) return flash(out.error || "FPL did not answer.");
+    const imported = stateFromTeam(teamFromEntry(out.team));
+    if (!imported) return flash("That team has a player this page does not know — run fpl serve again, then import.");
+    withUndo(`Imported ${out.team.name}, as it stood at the GW${out.team.gw} deadline`, () => {
+      state = imported;
+      selectedPick = null;
+      applyBestXI();
+      render();
+    });
+    el("setupBank").value = money(bank());
+    el("setupFt").value = state.freeTransfers;
+    fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: Number(raw) }),
+    }).then(r => { if (r.ok) { configExists = true; renderSetup(); } }).catch(() => {});
+  } catch (e) {
+    flash("Could not reach the local helper — is `fpl serve` still running?");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import";
+  }
 }
 
 /* =====================================================================
@@ -4052,7 +4149,16 @@ function renderArmbands() {
 }
 
 function renderNotices() {
-  el("notices").innerHTML = validate().map(v =>
+  // Where the team came from, while it is still the latest FPL has: after the
+  // next deadline the import is a week old and a rebuild brings the new one.
+  const imp = state.imported;
+  const source = imp
+    ? `<div class="notice info"><span>Your FPL team <b>${imp.name}</b>, as it stood at the GW${imp.gw} deadline${
+        imp.gw < currentGw() - 1 ? ` — run <code>fpl serve</code> again to import GW${currentGw() - 1}'s` : ""}.
+        Transfers you make in the FPL app before a deadline stay private until it passes, so they are not here yet.${
+        (imp.notes || []).map(n => ` ${n}.`).join("")}</span></div>`
+    : "";
+  el("notices").innerHTML = source + validate().map(v =>
     `<div class="notice ${v.level === "err" ? "err" : v.level === "ok" ? "ok" : "warn"}">${v.msg}</div>`
   ).join("");
 }
@@ -4417,6 +4523,8 @@ el("autoSquad").addEventListener("click", () => withUndo("Wildcard draft", autoP
 el("confirm").addEventListener("click", () => withUndo(`Saved as your GW${currentGw()} team`, lockInSquad));
 el("reset").addEventListener("click", () => withUndo("Squad reset", resetAll));
 el("saveConfig").addEventListener("click", saveConfig);
+el("importTeam").addEventListener("click", importTeam);
+el("setupTeam").addEventListener("keydown", e => { if (e.key === "Enter") importTeam(); });
 // Typing a bank or transfer count takes effect on the page straight away, so
 // affordability and hit checks are right before anything is written to disk.
 el("setupBank").addEventListener("change", () => {

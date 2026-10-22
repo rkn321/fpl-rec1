@@ -9,6 +9,8 @@ paste by hand. Served from here instead, the page gets two small endpoints:
     GET  /api/live     points scored so far in a gameweek, and which matches
                        have been played — a browser cannot ask FPL for this
                        itself (CORS), so the helper does, cached for a minute
+    GET  /api/entry    a manager's real team by FPL team id: squad, bank,
+                       purchase prices, chips (`src/data/entry.py`)
 
 Whether the local file *exists* is what the page uses to decide it is someone's
 first visit: absent, it asks them to pick a team and set a bank; present, they
@@ -50,6 +52,19 @@ HOST = "127.0.0.1"
 SQUAD_KEYS = ("players", "captain", "vice", "bank", "free_transfers")
 
 
+def _team_id(value: Any) -> int:
+    """An FPL team id: a positive whole number, as in the team's URL."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError("team_id must be the number in your FPL team's URL")
+    try:
+        tid = int(str(value).strip())
+    except ValueError:
+        raise ValueError("team_id must be the number in your FPL team's URL") from None
+    if tid <= 0:
+        raise ValueError("team_id must be a positive number")
+    return tid
+
+
 def read_local(config: Config) -> dict[str, Any]:
     """What the page should know about the saved team, in the yaml's own units."""
     path = local_config_path(config.path)
@@ -69,6 +84,7 @@ def read_local(config: Config) -> dict[str, Any]:
             "vice": squad.get("vice"),
             "bank": squad.get("bank"),
             "free_transfers": squad.get("free_transfers"),
+            "team_id": squad.get("team_id"),
         },
     }
 
@@ -77,6 +93,10 @@ def _validate(payload: Any) -> dict[str, Any]:
     """Reject anything that is not a plausible squad before it touches disk."""
     if not isinstance(payload, dict):
         raise ValueError("expected a JSON object")
+
+    # A team id on its own is a complete save: the next build imports the rest.
+    if "team_id" in payload and payload.get("players") is None:
+        return {"team_id": _team_id(payload["team_id"])}
 
     players = payload.get("players")
     if not isinstance(players, list) or not all(isinstance(n, str) and n.strip() for n in players):
@@ -114,6 +134,9 @@ def _validate(payload: Any) -> dict[str, Any]:
             raise ValueError("free_transfers must be between 0 and 5")
         out["free_transfers"] = ft
 
+    if payload.get("team_id") is not None:
+        out["team_id"] = _team_id(payload["team_id"])
+
     return out
 
 
@@ -128,8 +151,11 @@ def write_local(config: Config, payload: Any) -> Path:
             existing = yaml.safe_load(fh) or {}
 
     block = dict(existing.get("squad") or {})
-    for key in SQUAD_KEYS:
-        block.pop(key, None)
+    # A full save replaces the squad it wrote last time, armbands included; a
+    # team id alone touches nothing else.
+    if "players" in squad:
+        for key in SQUAD_KEYS:
+            block.pop(key, None)
     block.update(squad)
     existing["squad"] = block
 
@@ -142,7 +168,7 @@ def write_local(config: Config, payload: Any) -> Path:
     )
     body = yaml.safe_dump(existing, sort_keys=False, allow_unicode=True)
     path.write_text(header + body, encoding="utf-8")
-    log.info("wrote %s (%d players)", path, len(squad["players"]))
+    log.info("wrote %s (%s)", path, f"{len(squad['players'])} players" if "players" in squad else "team id")
     return path
 
 
@@ -208,7 +234,34 @@ class _Handler(SimpleHTTPRequestHandler):
         if route == "/api/live":
             self._live(query)
             return
+        if route == "/api/entry":
+            self._entry(query)
+            return
         super().do_GET()
+
+    def _entry(self, query: str) -> None:
+        from .data.entry import import_team
+
+        params = dict(part.split("=", 1) for part in query.split("&") if "=" in part)
+        try:
+            team_id = _team_id(params.get("team_id", ""))
+        except ValueError as exc:
+            self._json(400, {"ok": False, "error": str(exc)})
+            return
+        client = self.client or FPLClient(self.config)
+        try:
+            next_gw = client.next_gw()
+            if not next_gw or next_gw <= 1:
+                raise ValueError("there is no squad to import before the first deadline")
+            team = import_team(client, team_id, next_gw - 1)
+        except ValueError as exc:
+            self._json(400, {"ok": False, "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - a bad id 404s at FPL; the page says so plainly
+            log.warning("FPL team %s could not be imported: %s", team_id, exc)
+            self._json(502, {"ok": False, "error": f"FPL has no team {team_id}, or did not answer"})
+            return
+        self._json(200, {"ok": True, "team": team.to_json()})
 
     def _live(self, query: str) -> None:
         params = dict(part.split("=", 1) for part in query.split("&") if "=" in part)

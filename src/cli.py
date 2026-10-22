@@ -159,6 +159,24 @@ def cmd_predict(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_imported(client: FPLClient, team_id: int, gw: int) -> bool:
+    """Say which FPL team the page was built with; False if it could not be imported."""
+    from .data.entry import import_team
+    from .data.fpl_api import FPLAPIError
+
+    try:
+        team = import_team(client, team_id, gw - 1)   # cached by the build a moment ago
+    except (FPLAPIError, ValueError, KeyError) as exc:
+        print(f"team      : FPL team {team_id} could not be imported ({exc}); used the config's squad")
+        return False
+    print(f"team      : {team.name} (FPL {team_id}), as it stood at the GW{team.gw} deadline — "
+          f"bank £{team.bank / 10:.1f}m, {team.free_transfers} free transfer"
+          f"{'' if team.free_transfers == 1 else 's'} (estimated from the transfer history)")
+    for note in team.notes:
+        print(f"            {note}")
+    return True
+
+
 def cmd_export_frontend(args: argparse.Namespace) -> int:
     from . import frontend
 
@@ -176,6 +194,8 @@ def cmd_export_frontend(args: argparse.Namespace) -> int:
         squad = [n.strip() for n in text.replace(",", "\n").splitlines() if n.strip()]
     else:
         squad = config.squad_players or None
+    # Naming a squad is a deliberate override; otherwise a team id brings the real team.
+    team_id = None if (args.squad or args.squad_file) else (args.team_id or config.squad_team_id)
 
     bank = round(args.bank * 10) if args.bank is not None else config.squad_bank
     horizon = args.horizon if args.horizon is not None else (config.squad_horizon or 5)
@@ -183,13 +203,15 @@ def cmd_export_frontend(args: argparse.Namespace) -> int:
     output = Path(args.output) if args.output else None
     path = frontend.export(
         config=config, client=client, gw=gw, model=args.model, squad=squad,
-        bank=bank, horizon=horizon, output=output,
+        bank=bank, horizon=horizon, output=output, team_id=team_id,
     )
 
     size_kb = path.stat().st_size / 1024
     print(f"gameweek  : {gw}")
     print(f"model     : {args.model}")
     print(f"written   : {path} ({size_kb:.0f} KB)")
+    if team_id and _print_imported(client, team_id, gw):
+        squad = None   # the imported team was used, not the names
     if squad:
         from .data.fpl_api import ELEMENT_TYPE_TO_POSITION
 
@@ -243,13 +265,16 @@ def cmd_serve(args: argparse.Namespace) -> int:
         client = FPLClient(config)
         gw = args.gw or client.next_gw()
         _fetch_cloud_snapshots(config)
+        team_id = args.team_id or config.squad_team_id
         page = frontend.export(
             config=config, client=client, gw=gw, model=args.model,
             squad=config.squad_players or None, bank=config.squad_bank,
-            horizon=config.squad_horizon or 5,
+            horizon=config.squad_horizon or 5, team_id=team_id,
         )
         print(f"gameweek  : {gw}")
         print(f"written   : {page}")
+        if team_id:
+            _print_imported(client, team_id, gw)
 
     serve.serve(
         config, directory=page.parent, page=page.name,
@@ -417,6 +442,10 @@ def main(argv: list[str] | None = None) -> int:
         "--open", action="store_true", help="open the page in your browser once built"
     )
     p_front.add_argument("--output", default=None, help="output path")
+    p_front.add_argument(
+        "--team-id", type=int, default=None,
+        help="import this FPL team's squad, bank and chips (default: squad.team_id)",
+    )
     p_front.set_defaults(func=cmd_export_frontend)
 
     p_serve = sub.add_parser(
@@ -426,6 +455,10 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument("--gw", type=int, default=None, help="gameweek (default: next)")
     p_serve.add_argument("--model", default="component", help="predictor supplying the model xPts column")
     p_serve.add_argument("--port", type=int, default=8765, help="local port (default: 8765)")
+    p_serve.add_argument(
+        "--team-id", type=int, default=None,
+        help="import this FPL team's squad, bank and chips (default: squad.team_id)",
+    )
     p_serve.add_argument("--no-open", action="store_true", help="do not open the browser")
     p_serve.add_argument(
         "--no-build", action="store_true",
