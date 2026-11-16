@@ -1704,10 +1704,17 @@ function validate() {
   if (state.picks.length === RULES.squadSize) {
     const spread = state.picks.map(p => epOf(p.id));
     const range = Math.max(...spread) - Math.min(...spread);
-    if (DATA.gameweek <= 5 || range < 4) {
+    // Two different reasons, so the wording says the one that is true: the
+    // season is young, or this particular squad is rated in a narrow band.
+    if (DATA.gameweek <= 5) {
       out.push({
         level: "warn",
         msg: `Only ${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} played, so ${metricLabel()} barely separates these players — auto-pick is close to a coin flip here. Click any two cards to swap them yourself.`,
+      });
+    } else if (range < 4) {
+      out.push({
+        level: "warn",
+        msg: `${metricLabel()} rates all ${RULES.squadSize} of these players within ${range.toFixed(1)} points of each other, so there is little to choose between them — auto-pick is close to a coin flip here. Click any two cards to swap them yourself.`,
       });
     }
   }
@@ -4143,8 +4150,8 @@ function renderAdvice() {
   } else if (nextHit > 0) {
     verdict = callHTML("go", "Only with a hit",
       `${names(best)} gains <b>+${best.gain.toFixed(1)}</b> over ${window} but costs ${nextHit} points,
-       netting <b>+${net.toFixed(1)}</b>. Worth it only if you believe the numbers — one gameweek of
-       evidence is thin.`, best, net);
+       netting <b>+${net.toFixed(1)}</b>. Worth it only if you believe the gap — the hit is certain,
+       the gain is a forecast.`, best, net);
   } else if (best.gain < WORTH_A_TRANSFER) {
     verdict = callHTML("hold", "Probably roll it",
       `The best move on the board, ${names(best)}, is worth about <b>+${best.gain.toFixed(1)} pts</b>
@@ -4433,7 +4440,8 @@ function initChrome() {
     `useful, and humbler than the figures this page once quoted. ` +
     (DATA.oddsPriced === false
       ? `<b>No betting odds</b> were published for GW${DATA.gameweek} when this was built, so it uses the model ` +
-        `fitted without them; rebuild two or three days before the deadline for the odds-informed figures. `
+        `fitted without them, with Elo team strength standing in for the market on clean sheets and goals ` +
+        `conceded; rebuild two or three days before the deadline for the odds-informed figures. `
       : "") +
     `With only ${DATA.gameweek - 1} gameweek${DATA.gameweek === 2 ? "" : "s"} of this season played, treat ` +
     `the ordering as more trustworthy than the magnitudes.</p>` +

@@ -181,7 +181,10 @@ def team_names(results: pd.DataFrame, season: str, team_ids: Mapping[str, int]) 
     them. A side that cannot be matched is left out and logged.
     """
     resolve = team_resolver(team_ids)
-    names = set(results.loc[results["season"] == season, "home"])
+    # Home and away both, as the ratings are seated: early in a season a side may
+    # not have hosted anyone yet, and would otherwise have no name and no gap.
+    played = results.loc[results["season"] == season]
+    names = set(played["home"]) | set(played["away"])
     out = {}
     for name in names:
         tid = resolve(name)
@@ -203,3 +206,71 @@ def fixture_gap(ratings: Mapping[str, float], team: str, opponent: str, home: bo
     if team not in ratings or opponent not in ratings:
         return float("nan")
     return ratings[team] - ratings[opponent] + (home_advantage if home else -home_advantage)
+
+
+# -- the gap as a column of the player-fixture frame -----------------------------------
+
+GAP_COL = "elo_gap"
+
+
+def deadlines(df: pd.DataFrame) -> dict[tuple[str, int], pd.Timestamp]:
+    """(season, gw) -> the day of that gameweek's first kickoff, a stand-in for its deadline."""
+    kickoff = pd.to_datetime(df["kickoff_time"], utc=True)
+    first = kickoff.groupby([df["season"], df["gw"]]).min().dropna()
+    return {(s, int(g)): t.tz_convert(None).normalize() for (s, g), t in first.items()}
+
+
+def attach_gap(rows: pd.DataFrame, book: EloBook, names: Mapping[str, Mapping[int, str]],
+               when: pd.Series) -> pd.Series:
+    """Each row's Elo gap (see `fixture_gap`), with ratings as they stood on `when`."""
+    def name(season: str, tid: int) -> str | None:
+        return names.get(season, {}).get(int(tid))
+
+    team = pd.Series([name(s, t) for s, t in zip(rows["season"], rows["team_id"])], index=rows.index)
+    opp = pd.Series([name(s, t) for s, t in zip(rows["season"], rows["opponent_id"])], index=rows.index)
+    home = pd.Series(np.where(rows["was_home"].astype(bool), book.home, -book.home), index=rows.index)
+    out = pd.Series(np.nan, index=rows.index)
+    for day, idx in when.groupby(when).groups.items():
+        ratings = book.as_of(day)
+        out.loc[idx] = team.loc[idx].map(ratings) - opp.loc[idx].map(ratings) + home.loc[idx]
+    return out
+
+
+def attach_gap_column(
+    df: pd.DataFrame,
+    config: Config,
+    team_ids: Mapping[str, Mapping[str, int]],
+    loader: OddsLoader | None = None,
+) -> pd.DataFrame:
+    """Add `elo_gap`: the team's Elo advantage in each row's fixture, as at its gameweek's deadline.
+
+    Positive means the row's team is the stronger side on the day, home advantage
+    included. Ratings are replayed only through matches on earlier dates than the
+    gameweek's first kickoff, so a row never sees a result it could not have known
+    — and the same holds for a fixture still to be played, which takes every
+    result so far. NaN wherever a rating is missing.
+
+    This is a column and not a model feature on purpose: it is the team-strength
+    stand-in for a week whose betting odds are not out, read by the defence model
+    alone (`src/models/defence.py`), so adding it changes nothing else.
+    """
+    out = df.copy()
+    out[GAP_COL] = np.nan
+    try:
+        results = load_results(config, str(df["season"].max()), loader)
+        if results.empty:
+            raise ValueError("no results to rate")
+        book = EloBook(results)
+    except Exception as exc:  # the model falls back to its team-level trees
+        log.warning("Elo unavailable (%s); rows carry no %s", exc, GAP_COL)
+        return out
+
+    names = {s: team_names(results, s, ids) for s, ids in team_ids.items()}
+    day = deadlines(out)
+    when = pd.Series(
+        [day.get((s, int(g)), pd.NaT) if pd.notna(g) else pd.NaT for s, g in zip(out["season"], out["gw"])],
+        index=out.index, dtype="datetime64[ns]",
+    )
+    out[GAP_COL] = attach_gap(out, book, names, when)
+    log.info("Elo gap on %.0f%% of rows", 100 * out[GAP_COL].notna().mean())
+    return out

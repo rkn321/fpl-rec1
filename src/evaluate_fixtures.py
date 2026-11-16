@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from .config import Config
-from .data.elo import EloBook, load_results, team_names
+from .data.elo import EloBook, attach_gap, deadlines, load_results, team_names
 
 log = logging.getLogger(__name__)
 
@@ -53,28 +53,6 @@ def starters(df: pd.DataFrame) -> pd.DataFrame:
     rows = df[(df["minutes"] >= STARTER_MINUTES) & df["position"].isin(POSITIONS)]
     return rows[["season", "gw", "player_id", "name", "position", "team_id", "opponent_id",
                  "was_home", "kickoff_time", "team_difficulty", "total_points"]].copy()
-
-
-def deadlines(df: pd.DataFrame) -> dict[tuple[str, int], pd.Timestamp]:
-    """(season, gw) -> the day of that gameweek's first kickoff, a stand-in for its deadline."""
-    first = df.groupby(["season", "gw"])["kickoff_time"].min()
-    return {k: v.tz_convert(None).normalize() for k, v in first.items()}
-
-
-def attach_gap(rows: pd.DataFrame, book: EloBook, names: dict[str, dict[int, str]],
-               when: pd.Series) -> pd.Series:
-    """Each row's Elo gap (see `fixture_gap`), with ratings as they stood on `when`."""
-    def name(season: str, tid: int) -> str | None:
-        return names.get(season, {}).get(int(tid))
-
-    team = pd.Series([name(s, t) for s, t in zip(rows["season"], rows["team_id"])], index=rows.index)
-    opp = pd.Series([name(s, t) for s, t in zip(rows["season"], rows["opponent_id"])], index=rows.index)
-    home = pd.Series(np.where(rows["was_home"].astype(bool), book.home, -book.home), index=rows.index)
-    out = pd.Series(np.nan, index=rows.index)
-    for day, idx in when.groupby(when).groups.items():
-        ratings = book.as_of(day)
-        out.loc[idx] = team.loc[idx].map(ratings) - opp.loc[idx].map(ratings) + home.loc[idx]
-    return out
 
 
 def season_ratio(rows: pd.DataFrame) -> pd.Series:

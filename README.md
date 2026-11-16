@@ -311,6 +311,16 @@ gameweek again replaces its rows), and those totals — not one Saturday — are
 what a claim like "the bonus term overweights small samples" should be tested
 against.
 
+**The log says which build made each row.** Its `odds_priced` column is `priced`
+or `unpriced` (the week's odds were, or were not, out when the prediction was
+made) and `fingerprint` is a short hash of the model code. Rows logged before
+these existed read `unknown`, and nothing is guessed: GW5's rows are believed to
+come from an earlier model that read FPL's figure (its largest predictions run
+well above any week since), but nothing recorded it, so filter on `fingerprint`
+from the first stamped week on, not on the whole log. The first build of each
+gameweek is kept beside the last, as `predictions_gw{N}_first.csv`, so a week's
+unpriced build and its priced one can be scored against each other.
+
 Three of them say *where* the figures are wrong rather than how far, and are
 repeated in the page's Track record tab:
 
@@ -784,8 +794,9 @@ XI **+0.26 real points a player** (95% interval +0.05 to +0.48), changing about
 A gameweek's prices appear a few days before it, so a build earlier in the week
 has none for the week it predicts. Rather than hand a model trained with odds a
 blank, `predict` falls back to the same model fitted without them — the variant
-measured above — and the page and `fpl predict` say so. Rebuild once the week's
-odds are out.
+measured above — with Elo team strength standing in for the market on clean sheets
+and goals conceded ([below](#clean-sheets-without-a-price-elo-not-the-trees)), and
+the page and `fpl predict` say so. Rebuild once the week's odds are out.
 
 ### Clean sheets: the market, and a team model that saw one player
 
@@ -841,10 +852,116 @@ which is what RMSE and the ranking measure. The tables above are from before
 this change; the model's MAE is a little higher and its ranking a little better
 than they show.
 
-Not done: a week without odds still uses the trees, and Elo-implied expected
-goals — the market's replacement for exactly those weeks, and for the 2–5 weeks
-ahead the page projects — is the obvious fallback. A match with odds also still
-ignores that the market's price is a Friday one, before team news.
+Not done: a match with odds still ignores that the market's price is a Friday
+one, before team news. (A week *without* odds is the next section.)
+
+### Clean sheets without a price: Elo, not the trees
+
+Found from the stored GW11 predictions, built before the week's odds were out:
+Brighton were given a 70% clean sheet and Man City 40%. Their keeper, Verbruggen,
+topped the pool at 5.75 ahead of Haaland's 5.45, and four of the top five were
+Brighton. The odds-free fit reads the trees above, and the trees turn out to be
+worse than a constant guess.
+
+Out of fold, every gameweek from GW2 of 2023-24, 2024-25 and 2025-26, each trained
+only on what came before (2,202 keeper-matches), Brier score on a clean sheet,
+lower is better. The Elo ratings (`src/data/elo.py`) were tuned on 2017-22, before
+any of these seasons:
+
+| P(clean sheet) from | Brier | the 40 it rated likeliest: predicted / kept |
+|---|---|---|
+| a constant (the training rate) | 0.1773 | |
+| the odds-free trees — what a week without prices used | 0.1863 | 72% / 32.5% |
+| the same trees with the Elo gap as a feature | 0.1871 | |
+| a logistic on the Elo gap | **0.1692** | |
+| Elo gap → market's expected goals → the market's logistic | **0.1689** | 45% / 47.5% |
+| the market itself, odds known (the ceiling) | 0.1672 | 46% / 45% |
+
+The trees' tail is the damage: they scored 0.005 to 0.034 worse than the constant in
+every slice, gave a side as much as 86%, and their forty likeliest kept it a third
+of the time. Over every gameweek the Elo logistic beats the trees by −0.017 (95%
+interval −0.023 to −0.012, resampling gameweeks) and the constant by −0.008
+(−0.011 to −0.005); the market, with the odds known, is a further 0.002 better
+(0.0003 to 0.003). Elo wins in each of 2023-24, 2024-25, the 2025-26 cold start
+(GW2–6: 0.186 against 0.228 for the trees) and the 2025-26 holdout (0.177 against
+0.196). Adding the gap to the trees as a feature did nothing (+0.001). Goals
+conceded: the payout's squared error was 0.406 for a constant, 0.385 for the trees,
+0.369 from a Poisson on the gap and 0.360 from the market.
+
+**On the whole model the gain is not visible in the XI.** The odds-free component
+model walk-forward, the Elo layer on against off, on every other gameweek of 2024-25,
+GW2–6 and every other gameweek from GW7 of 2025-26 (40 gameweeks). Difference, on
+minus off, mean over gameweeks with a 95% interval from resampling them; MAE and
+RMSE are over players with recent minutes, and the XI is the best legal eleven from
+the whole pool by predicted points, scored on what each really got:
+
+| on minus off | all 40 | 2024-25 (19) | 2025-26 GW2–6 (5) | 2025-26 GW7+ (16) |
+|---|---|---|---|---|
+| RMSE | −0.009 [−0.019, +0.001] | −0.000 | −0.035 [−0.068, 0.000] | −0.012 [−0.026, +0.004] |
+| RMSE, defenders | −0.021 [−0.042, +0.001] | −0.001 | −0.075 [−0.136, −0.008] | −0.027 [−0.062, +0.007] |
+| MAE | +0.008 [−0.001, +0.017] | +0.017 [+0.004, +0.029] | −0.019 | +0.006 |
+| rank within position | +0.003 [−0.003, +0.010] | −0.001 | +0.019 | +0.003 |
+| XI real points a player | −0.04 [−0.32, +0.25] | −0.36 [−0.71, −0.02] | +0.36 [−0.35, +0.98] | +0.22 [−0.27, +0.71] |
+
+It changes about 3 of the 11 picks a week, and the XI is flat: worse in 2024-25 (the one
+slice whose interval excludes zero), better in 2025-26, neither beyond noise. The layer
+lifts every defender's and keeper's clean-sheet points (0.260 to 0.304 a player with
+recent minutes: the trees' mean clean-sheet chance was 0.189 against 0.230 actually
+kept). That is not what loses the XI in 2024-25 — scaling the layer's clean-sheet
+points back to the trees' level leaves the loss at −0.35, and within-position rank is
+level there (0.481 to 0.480). What is left is which sides' defenders it picks, or
+noise: a metric of 19 gameweeks whose interval only just excludes zero, with the two
+2025-26 slices pointing the other way. Adopted on the criterion set for it, a
+better-calibrated clean sheet than the constant and the trees, and not on a gain in
+the XI, which is not shown.
+
+Adopted, in `DefenceModel`: where a row has no odds but has an Elo gap
+(`elo_gap`, added to the frame by `pipeline.load_raw`), the clean sheet is a
+logistic on the gap and the goals conceded a Poisson on it, both fitted on what
+happened. The market still wins where it has priced the match, so a priced week is
+unchanged to the digit, and a row with neither keeps the trees. The gap is a column,
+not a feature: no other component reads it. The shipped layer is the plain logistic
+and Poisson, not the table's two-step route; they are within 0.0003 of each other.
+
+### Saves: a step, not a third of the mean
+
+Found from the review log: over GW5–10 keepers' saves scored 77 points against 105
+predicted. `DefenceModel` paid `mean saves / 3`, and the payout is one point per
+*three* saves, so the expectation is E[floor(X / 3)] — about a third of a point a
+keeper-match less. Out of fold over 2,045 keeper-matches of 60+ minutes, points per
+match against what was scored:
+
+| saves paid as | bias | RMSE |
+|---|---|---|
+| a third of the mean (before) | +0.303 | 0.743 |
+| a step over a Poisson of the mean | **−0.029** | **0.679** |
+| a step over a negative binomial (dispersion from earlier folds) | −0.024 | 0.678 |
+
+Over-predicted in every season (+0.26, +0.36, +0.29), and within 0.07 either way after
+(−0.07, +0.02, −0.04). The negative binomial buys nothing, so the Poisson step is adopted. The log counts
+penalty saves (5 points) as saves; they are 1.7% of keeper starts, so 0.083 points a
+start, and now a flat base rate from the training keepers, as cards are.
+
+### Bonus by position: structural, and not this season's rule change
+
+Over GW5–10 forwards scored 84 bonus points against 43 predicted. The first suspects
+were the 2026/27 BPS reweighting and the rank table having been fitted on players
+who played. Walk-forward, the position-blind rank-to-bonus table over-delivers to
+forwards in both full seasons before it:
+
+| actual / predicted bonus, players who played | GK | DEF | MID | FWD | all |
+|---|---|---|---|---|---|
+| 2024-25 (12 gameweeks) | 0.83 | 0.89 | 0.97 | **1.57** | 1.02 |
+| 2025-26 (17 gameweeks) | 1.09 | 0.86 | 0.96 | **1.58** | 1.02 |
+
+The total is right and the split is not, in seasons with the old rules. Ranking over
+only the players who actually played — an oracle on who is available — leaves
+forwards at 1.52 and 1.56, so the table having been fitted on players who played and
+applied to everyone listed is not the cause either. What is left is that a table
+keyed on rank alone hands a forward and a defender of the same predicted rank the
+same bonus. Not fixed: a rank-by-position table is the obvious change, and it needs
+the full harness, not a six-week log. GW5–10 of 2026-27 has too few forwards to say
+whether the new rules widened it.
 
 ### Fixtures beyond next week: Elo, not FPL's difficulty
 
@@ -1089,23 +1206,44 @@ enable them.
 
 `.github/workflows/tests.yml` runs the same suite on every push and pull
 request, on Python 3.11 (the oldest supported) and 3.14 (what the project is
-developed on). There the cache is always cold, so it is the offline suite —
-140 tests, with the 14 that need real data skipped.
+developed on). There the cache is always cold, so it is the offline suite: 231
+tests are collected, and those that need real data skip.
 
 ## Current state and next step
 
-The feature frame covers 2022-23 to 2025-26 and the current season: 115,819
-player-fixtures and 189 features. DEFCON columns exist only from 2025-26 and are
-NaN before that, which is carried explicitly rather than filled.
+Phases 1–3 are built and in use. The feature frame covers 2022-23 to 2025-26 and
+the season in progress (about 116,000 player-fixtures and 194 features at the last
+`build-features`); DEFCON columns exist only from 2025-26 and are NaN before that,
+which is carried explicitly rather than filled. The component model covers minutes,
+attack, defence and bonus; betting odds and Elo team strength are in. Understat
+shots, the lineup feed and the optimiser are still stubs.
 
-Next, per §8 Phase 3: **build the minutes model first**. Every other component
-gets multiplied by playing time, so it dominates the error budget. The features
-it needs (`start_rate_todate`, `minutes_r3/r5/r10`, `minutes_lag1/lag2`) are
-already in the frame; `chance_of_playing_next_round` from `bootstrap-static`
-should be added alongside them.
+What is known to be wrong or open, in the order it moves a transfer call. Each of
+these was checked against the stored predictions, the review log or the code; the
+ones already fixed are in the sections above.
 
-One caveat on predicting right now: the 2026/27 season is one gameweek old, so
-`points_per_90_todate` is computed from a single match and `predict` output is
-close to "whoever scored well in GW1". That is the baselines behaving correctly
-on one gameweek of evidence, not a bug — it is also exactly the cold-start
-problem Phase 4's priors (odds, team strength) are meant to solve.
+- **A zero this week is a zero for every week.** The page's horizon score is this
+  week's figure times each later fixture's weight (`horizonScore`, `rate(p)`), so a
+  suspended or injured player scores 0.0 for every gameweek of the horizon, and a
+  player at 25–75% carries this week's doubt through all five. It needs a rule for
+  what a flag means after the first week — a ban has a known end, an injury does not —
+  which is a design choice, not a patch.
+- **Transfers are valued without the armband or the bench.** `squadValueOverHorizon`
+  sums the best XI once, so a captain's double margin and bench cover are worth
+  nothing to a transfer.
+- **Pair transfers.** The hit ignores transfers already made this week
+  (`pairMoves` reads `state.freeTransfers`, not `transfersMade()`), and a pair is
+  only found if its first leg gains on its own, so "downgrade to fund an upgrade"
+  never appears.
+- **Bonus goes to the wrong positions** — see [above](#bonus-by-position-structural-and-not-this-seasons-rule-change).
+- **The review log mixes builds.** Rows before the build columns read `unknown`;
+  GW5's are believed to come from the earlier model that read FPL's figure.
+- **Every "measured and not adopted" verdict** above was reached with the leaked
+  `xP` in the model, and the backtest tables predate the clean-sheet change, the
+  Elo layer and the saves change. The saves change moves every keeper in every week,
+  priced or not, and was measured on the saves term only, not through the harness.
+- **August still uses the trees.** Elo has no rating for a season before its first
+  results, so GW1 of a new season has no `elo_gap` and falls back as before.
+- **`team_difficulty` is still a model feature**, trained on FPL's hindsight ratings.
+- **The rank-to-bonus table is built in-sample**, and the middle playing-time bands
+  need team news.

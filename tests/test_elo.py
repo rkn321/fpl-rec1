@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.elo import START, EloBook, expected_home, fixture_gap, margin_factor
+from types import SimpleNamespace
+
+from src.data.elo import (
+    GAP_COL, HOME, START, EloBook, attach_gap_column, deadlines, expected_home, fixture_gap, margin_factor,
+    team_names,
+)
 from src.evaluate_fixtures import ELO_CAP, fit
 from src.frontend import _fixture_lookup
 
@@ -128,3 +133,91 @@ def test_the_close_season_adjustment_is_visible_before_the_first_match() -> None
     book = EloBook(results(SEASON + nxt))
     assert "E" in book.as_of("2021-08-14")         # the GW1 deadline's own day
     assert "E" not in book.as_of("2020-10-04")     # but not before last season had finished
+
+
+# -- the gap as a column of the frame -------------------------------------------------
+
+class _Loader:
+    """football-data's season CSVs, for one season."""
+
+    def __init__(self, played: list[tuple[str, str, str, int, int]]):
+        self.frame = pd.DataFrame(played, columns=["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"])
+
+    def season(self, season: str, current: bool = False):
+        return self.frame if season == "2020-21" else None
+
+
+class _BrokenLoader:
+    def season(self, season: str, current: bool = False):
+        raise RuntimeError("football-data is down")
+
+
+PLAYED = [
+    ("12/09/2020", "Arsenal", "Burnley", 3, 0),
+    ("19/09/2020", "Chelsea", "Fulham", 1, 1),
+]
+IDS = {"2020-21": {"Arsenal": 1, "Burnley": 2, "Chelsea": 3, "Fulham": 4}}
+CONFIG = SimpleNamespace(season_current="2020-21")
+
+
+def _frame(rows: list[tuple[int, int, int, bool, str]]) -> pd.DataFrame:
+    """(gw, team, opponent, at home, kickoff) per row."""
+    return pd.DataFrame(
+        rows, columns=["gw", "team_id", "opponent_id", "was_home", "kickoff_time"],
+    ).assign(season="2020-21", kickoff_time=lambda d: pd.to_datetime(d["kickoff_time"], utc=True))
+
+
+def test_the_gap_column_is_the_teams_advantage_as_the_gameweek_began() -> None:
+    frame = _frame([
+        (1, 1, 2, True, "2020-09-12T14:00Z"),    # GW1: nothing played yet
+        (2, 1, 3, True, "2020-09-26T14:00Z"),    # GW2: Arsenal have beaten Burnley 3-0
+        (2, 3, 1, False, "2020-09-26T14:00Z"),   # the same fixture from Chelsea's side
+    ])
+    out = attach_gap_column(frame, CONFIG, IDS, loader=_Loader(PLAYED))
+    book = EloBook(results([("2020-21", "2020-09-12", "Arsenal", "Burnley", 3, 0),
+                            ("2020-21", "2020-09-19", "Chelsea", "Fulham", 1, 1)]))
+    after = book.as_of("2020-09-26")
+
+    assert out.loc[0, GAP_COL] == pytest.approx(HOME), "level ratings: only home advantage"
+    assert out.loc[1, GAP_COL] == pytest.approx(after["Arsenal"] - after["Chelsea"] + HOME)
+    assert out.loc[1, GAP_COL] == pytest.approx(-out.loc[2, GAP_COL]), "each side sees the other's gap, negated"
+    assert out.loc[1, GAP_COL] > out.loc[0, GAP_COL]
+    assert GAP_COL not in frame.columns, "the input frame is left alone"
+
+
+def test_the_gap_never_sees_a_result_from_the_gameweeks_own_day() -> None:
+    """A later match in the same gameweek must not move an earlier fixture's gap."""
+    frame = _frame([(1, 1, 2, True, "2020-09-12T14:00Z")])
+    base = attach_gap_column(frame, CONFIG, IDS, loader=_Loader(PLAYED))
+    same_day_result = PLAYED + [("12/09/2020", "Chelsea", "Fulham", 5, 0)]
+    again = attach_gap_column(frame, CONFIG, IDS, loader=_Loader(same_day_result))
+    assert again.loc[0, GAP_COL] == base.loc[0, GAP_COL]
+
+
+def test_the_gap_is_nan_when_a_team_cannot_be_rated_and_the_frame_survives_no_elo() -> None:
+    frame = _frame([(2, 1, 99, True, "2020-09-26T14:00Z")])           # team 99 is in no table
+    assert np.isnan(attach_gap_column(frame, CONFIG, IDS, loader=_Loader(PLAYED)).loc[0, GAP_COL])
+    broken = attach_gap_column(frame, CONFIG, IDS, loader=_BrokenLoader())
+    assert GAP_COL in broken.columns and broken[GAP_COL].isna().all()
+    assert list(broken.drop(columns=GAP_COL).columns) == list(frame.columns)
+
+
+def test_a_season_with_no_results_yet_has_no_gap_so_the_model_keeps_its_trees() -> None:
+    """GW1 of a new season, before any result: nothing to name the clubs by, so NaN, not a guess."""
+    frame = _frame([(1, 1, 2, True, "2021-08-14T14:00Z")]).assign(season="2021-22")
+    out = attach_gap_column(frame, CONFIG, {**IDS, "2021-22": IDS["2020-21"]}, loader=_Loader(PLAYED))
+    assert np.isnan(out.loc[0, GAP_COL])
+
+
+def test_a_side_that_has_only_played_away_still_has_a_name_and_so_a_gap() -> None:
+    """Early in a season not every club has hosted; it must not lose its rating for that."""
+    played = results([("2020-21", "2020-09-12", "Arsenal", "Burnley", 3, 0)])
+    assert team_names(played, "2020-21", IDS["2020-21"]) == {1: "Arsenal", 2: "Burnley"}
+
+
+def test_a_gameweeks_deadline_day_is_its_first_kickoff() -> None:
+    frame = _frame([
+        (1, 1, 2, True, "2020-09-12T14:00Z"), (1, 3, 4, True, "2020-09-11T19:00Z"),
+        (2, 1, 3, True, "2020-09-26T14:00Z"),
+    ])
+    assert deadlines(frame) == {("2020-21", 1): pd.Timestamp("2020-09-11"), ("2020-21", 2): pd.Timestamp("2020-09-26")}

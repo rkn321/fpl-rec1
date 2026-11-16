@@ -149,7 +149,8 @@ def cmd_predict(args: argparse.Namespace) -> int:
 
     print(f"\nExpected points — gameweek {prediction.gw} ({config.season_current}), model: {args.model}")
     if not prediction.odds_priced:
-        print(f"odds: not published for GW{prediction.gw} yet, so this uses the no-odds model — "
+        print(f"odds: not published for GW{prediction.gw} yet, so this uses the no-odds model, with Elo "
+              "team strength standing in for the market on clean sheets and goals conceded — "
               "rebuild once they are out (usually two or three days before the deadline)")
     if prediction.stored:
         print(f"{len(table)} players | stored for review: {prediction.stored}\n")

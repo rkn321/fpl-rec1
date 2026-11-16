@@ -115,9 +115,11 @@ OUTCOME_COLS: list[str] = [
     "transfers_balance",
 ]
 
-# `xP` doubles as baseline (b) in the evaluation (brief §7). It now also serves
-# as a feature, which makes "beats baseline (b)" partly circular — the backtest
-# reports both with and without it so the comparison stays legible.
+# `xP` is baseline (b) in the evaluation (brief §7) and is not a model feature:
+# its historical values were recorded after the matches (see above), so a model
+# trained on it learns the result. `build_features` leaves it out and
+# `_assert_no_raw_outcomes` guards the outcome columns; only the live and
+# snapshot values are a fair bar, which is how `fpl review` uses it.
 BASELINE_COLS: list[str] = []
 
 TARGET = "total_points"

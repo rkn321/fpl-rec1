@@ -12,7 +12,7 @@ import logging
 import pandas as pd
 
 from .config import Config, load_config
-from .data import odds
+from .data import elo, odds
 from .data.current import played_frame, upcoming_frame
 from .data.fpl_api import FPLClient
 from .data.historical import VaastavLoader, load_seasons
@@ -52,7 +52,11 @@ def load_raw(
             frames.append(future)
 
     raw = pd.concat(frames, ignore_index=True)
-    return odds.attach_all(raw, config, team_ids(config, raw, client), config.season_current)
+    ids = team_ids(config, raw, client)
+    raw = odds.attach_all(raw, config, ids, config.season_current)
+    # Team strength for the weeks whose prices are not out: a column the defence
+    # model reads, not a feature (see `elo.attach_gap_column`).
+    return elo.attach_gap_column(raw, config, ids)
 
 
 def team_ids(config: Config, raw: pd.DataFrame, client: FPLClient | None) -> dict[str, dict[str, int]]:
