@@ -17,7 +17,11 @@ first visit: absent, it asks them to pick a team and set a bank; present, they
 have already done that. The file stays gitignored, so a friend's team never
 touches the repository.
 
-Bound to the loopback address only. Nothing here is reachable from the network.
+Bound to the loopback address only. Nothing here is reachable from the network,
+but any web page the user has open can still ask their browser to call it, so an
+`/api/` request that names another origin (a page posting a squad over theirs) or
+another host (DNS rebinding) is refused. A request with no `Origin` — curl, the
+tests, a same-origin GET — is not a browser cross-site request, and passes.
 """
 
 from __future__ import annotations
@@ -226,8 +230,26 @@ class _Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _local_hosts(self) -> set[str]:
+        port = self.server.server_address[1]
+        return {f"{name}:{port}" for name in (HOST, "localhost")}
+
+    def _from_this_page(self) -> bool:
+        """False for an `/api/` call a page on another origin made through the user's browser."""
+        hosts = self._local_hosts()
+        host, origin = self.headers.get("Host"), self.headers.get("Origin")
+        return (host is None or host in hosts) and (origin is None or origin in {f"http://{h}" for h in hosts})
+
+    def _refuse_foreign(self) -> bool:
+        if self._from_this_page():
+            return False
+        self._json(403, {"ok": False, "error": "this helper only answers the page it serves"})
+        return True
+
     def do_GET(self) -> None:  # noqa: N802 - http.server's naming
         route, _, query = self.path.partition("?")
+        if route.startswith("/api/") and self._refuse_foreign():
+            return
         if route == "/api/config":
             self._json(200, read_local(self.config))
             return
@@ -283,6 +305,8 @@ class _Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] != "/api/config":
             self._json(404, {"ok": False, "error": "not found"})
+            return
+        if self._refuse_foreign():
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)

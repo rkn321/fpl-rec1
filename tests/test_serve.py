@@ -220,6 +220,41 @@ def test_endpoint_reports_validation_errors_as_400(server, base):
     assert not local_config_path(base).exists()
 
 
+def _request(url, *, headers, payload=None):
+    req = urllib.request.Request(
+        url, data=None if payload is None else json.dumps(payload).encode(),
+        method="GET" if payload is None else "POST", headers=headers,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as res:
+            return res.status, json.loads(res.read())
+    except urllib.error.HTTPError as err:
+        return err.code, json.loads(err.read())
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "http://evil.example:8765", "null", "http://127.0.0.1"])
+def test_a_save_from_another_web_page_is_refused(server, base, origin):
+    """A page the user has open can make their browser POST here; it must not overwrite their squad."""
+    status, out = _request(f"{server}/api/config", headers={"Content-Type": "text/plain", "Origin": origin},
+                           payload=good_payload())
+    assert status == 403 and out["ok"] is False
+    assert not local_config_path(base).exists(), "nothing was written"
+
+
+def test_a_page_this_helper_served_may_still_save(server, base):
+    status, out = _request(f"{server}/api/config", headers={"Content-Type": "application/json", "Origin": server},
+                           payload=good_payload())
+    assert status == 200 and out["ok"] is True and local_config_path(base).exists()
+    localhost = server.replace("127.0.0.1", "localhost")
+    status, _ = _request(f"{localhost}/api/config", headers={"Origin": localhost})
+    assert status == 200
+
+
+def test_a_rebound_host_name_is_refused_on_reads_too(server):
+    status, out = _request(f"{server}/api/config", headers={"Host": "evil.example:8765"})
+    assert status == 403 and out["ok"] is False
+
+
 def test_static_files_are_still_served(server):
     with urllib.request.urlopen(f"{server}/index.html", timeout=5) as res:
         assert res.status == 200
