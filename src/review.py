@@ -485,6 +485,103 @@ def head_to_head(log_rows: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([per_gw, pd.DataFrame([total], index=["all"])])
 
 
+# What a player actually scored, as the buckets a haul-or-blank decision lives in.
+# Lower bound inclusive, upper bound inclusive; a red card can take a player below zero.
+OUTCOME_BUCKETS: tuple[tuple[str, float, float], ...] = (
+    ("0 or less", -np.inf, 0.0),
+    ("1-2", 1.0, 2.0),
+    ("3-4", 3.0, 4.0),
+    ("5+", 5.0, np.inf),
+)
+
+# The appearance term is p(play) + p(60+): 0 for a player surely out, 2 for one surely
+# on for an hour. These cut it into the calls a manager would put in words.
+APPEARANCE_BINS: tuple[tuple[str, float, float], ...] = (
+    ("under 0.25", -np.inf, 0.25),
+    ("0.25-0.75", 0.25, 0.75),
+    ("0.75-1.25", 0.75, 1.25),
+    ("1.25-1.75", 1.25, 1.75),
+    ("over 1.75", 1.75, np.inf),
+)
+
+# Terms with something to say by position. Appearance and cards are near-constant
+# across positions, and a keeper's clean sheet is worth the same as a defender's.
+POSITION_TERMS: tuple[str, ...] = (
+    "goals", "assists", "clean_sheet", "goals_conceded", "saves", "defcon", "bonus",
+)
+
+
+def outcome_buckets(log_rows: pd.DataFrame) -> pd.DataFrame:
+    """The model and FPL's figure against what happened, by what the player scored.
+
+    Players with recent minutes that FPL also priced, bucketed on the points they
+    actually got: 0 or less, 1-2, 3-4, 5+. It shows where each figure is wrong,
+    which an average cannot: a figure that is close on everyone who blanks and far
+    on everyone who hauls can have the same MAE as one that is the other way
+    round, and the second is the one that wins a gameweek. Bucketing on the
+    outcome means every bucket's mean prediction sits below its mean actual at the
+    top and above it at the bottom, for any forecaster; it is the gap between the
+    model and FPL on the same rows that carries information.
+    """
+    playing = log_rows[playing_filter(log_rows) & log_rows["xp_fpl"].notna()]
+    rows = []
+    for label, low, high in OUTCOME_BUCKETS:
+        g = playing[(playing["actual"] >= low) & (playing["actual"] <= high)]
+        row: dict[str, Any] = {"bucket": label, "n": len(g),
+                               "actual_mean": float(g["actual"].mean()) if len(g) else float("nan")}
+        for who, col in (("model", "expected_points"), ("fpl", "xp_fpl")):
+            err = g[col] - g["actual"]
+            row[f"{who}_mean"] = float(g[col].mean()) if len(g) else float("nan")
+            row[f"{who}_mae"] = float(err.abs().mean()) if len(g) else float("nan")
+            row[f"{who}_rmse"] = float(np.sqrt((err ** 2).mean())) if len(g) else float("nan")
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("bucket")
+
+
+def minutes_calibration(log_rows: pd.DataFrame) -> pd.DataFrame:
+    """The model's playing-time call against who actually played, in bands of the appearance term.
+
+    Every predicted player. `predicted` and `actual` are the mean appearance points
+    (a point for playing, a second for an hour), so equal figures mean the call was
+    right on average for that band; `none` is the share who did not play at all and
+    `hour` the share who played 60 minutes or more. The middle bands are where the
+    minutes are unsettled, and where only team news can move the figure.
+    """
+    rows = []
+    for label, low, high in APPEARANCE_BINS:
+        g = log_rows[(log_rows["appearance"] > low) & (log_rows["appearance"] <= high)]
+        rows.append({
+            "band": label, "n": len(g),
+            "predicted": float(g["appearance"].mean()) if len(g) else float("nan"),
+            "actual": float(g["act_appearance"].mean()) if len(g) else float("nan"),
+            "none": float((g["minutes"] == 0).mean()) if len(g) else float("nan"),
+            "hour": float((g["minutes"] >= 60).mean()) if len(g) else float("nan"),
+        })
+    return pd.DataFrame(rows).set_index("band")
+
+
+def calibration_by_position(log_rows: pd.DataFrame) -> pd.DataFrame:
+    """`calibration`, split by position: one row per (term, position) with something to compare.
+
+    The all-player ratio for a term can hide a position that is wrong behind one
+    that is right. Clean sheets are the example: a keeper's and a defender's
+    clean sheet is the same team event, so the two ratios disagreeing means the
+    model gave one side's players different odds of it.
+    """
+    rows = []
+    for term in POSITION_TERMS:
+        if term not in log_rows or f"act_{term}" not in log_rows:
+            continue
+        for position in POSITIONS:
+            g = log_rows[log_rows["position"] == position]
+            pred, act = float(g[term].sum()), float(g[f"act_{term}"].sum())
+            if abs(pred) < 1e-9 and abs(act) < 1e-9:
+                continue
+            rows.append({"term": term, "position": position, "predicted": pred, "actual": act,
+                         "ratio": act / pred if abs(pred) > 1e-9 else float("nan")})
+    return pd.DataFrame(rows, columns=["term", "position", "predicted", "actual", "ratio"]).set_index(["term", "position"])
+
+
 # -- putting it together ----------------------------------------------------------
 
 @dataclass
@@ -500,6 +597,9 @@ class Review:
     calibration: pd.DataFrame       # season to date, per scoring term
     head_to_head: pd.DataFrame      # season to date, model against FPL
     notes: list[str] = field(default_factory=list)
+    buckets: pd.DataFrame = field(default_factory=pd.DataFrame)           # error by what was scored
+    minutes: pd.DataFrame = field(default_factory=pd.DataFrame)           # the playing-time call
+    by_position: pd.DataFrame = field(default_factory=pd.DataFrame)       # terms split by position
 
     @property
     def reconstructed(self) -> bool:
@@ -571,7 +671,8 @@ def run(
         table=table, squad=squad,
         squad_rows=squad_table(squad, table, actual) if squad is not None else None,
         calibration=calibration(this_season), head_to_head=head_to_head(this_season),
-        notes=notes,
+        notes=notes, buckets=outcome_buckets(this_season),
+        minutes=minutes_calibration(this_season), by_position=calibration_by_position(this_season),
     )
 
 
@@ -712,5 +813,40 @@ def render(review: Review, top: int = 8) -> str:
             out.append("  " + "-" * 49)
         ratio = "" if pd.isna(r["ratio"]) else f"{r['ratio']:.2f}"
         out.append(f"  {term:<16}{r['predicted']:>10.0f}{r['actual']:>10.0f}{ratio:>13}")
+    out += _detail_lines(review)
     out += ["", f"  log: {LOG_NAME} — one gameweek is an anecdote; the log is the evidence"]
     return "\n".join(out)
+
+
+def _detail_lines(review: Review) -> list[str]:
+    """The three season-to-date tables that say where the figures are wrong, not just how far."""
+    out: list[str] = []
+    b = review.buckets
+    if not b.empty and int(b["n"].sum()):
+        out += ["", "By what the player scored (players with recent minutes):",
+                f"  {'scored':<10}{'n':>6}{'model':>8}{'FPL':>8}{'actual':>8}{'MAE model':>11}{'FPL':>7}"]
+        for label, r in b.iterrows():
+            out.append(f"  {label:<10}{int(r['n']):>6}{_num(r['model_mean'], 2):>8}{_num(r['fpl_mean'], 2):>8}"
+                       f"{_num(r['actual_mean'], 2):>8}{_num(r['model_mae'], 2):>11}{_num(r['fpl_mae'], 2):>7}")
+    m = review.minutes
+    if not m.empty and int(m["n"].sum()):
+        out += ["", "Playing time: appearance points predicted (0-2) against what happened:",
+                f"  {'band':<11}{'n':>6}{'predicted':>11}{'actual':>8}{'did not play':>14}{'60+ min':>9}"]
+        for label, r in m.iterrows():
+            if int(r["n"]):
+                out.append(f"  {label:<11}{int(r['n']):>6}{r['predicted']:>11.2f}{r['actual']:>8.2f}"
+                           f"{r['none']:>14.0%}{r['hour']:>9.0%}")
+    p = review.by_position
+    if not p.empty:
+        out += ["", "Actual / predicted by position (a ratio far from 1.00 is a term the model gets wrong for that position):",
+                f"  {'term':<16}" + "".join(f"{pos:>8}" for pos in POSITIONS)]
+        for term in p.index.get_level_values("term").unique():
+            cells = []
+            for pos in POSITIONS:
+                try:
+                    r = p.loc[(term, pos)]
+                    cells.append(f"{r['ratio']:>8.2f}" if pd.notna(r["ratio"]) else f"{'—':>8}")
+                except KeyError:
+                    cells.append(f"{'':>8}")
+            out.append(f"  {term:<16}" + "".join(cells))
+    return out

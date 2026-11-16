@@ -3777,12 +3777,61 @@ function renderTrack() {
       <thead><tr><th>Scoring term</th><th>Predicted</th><th>Scored</th><th title="Scored ÷ predicted; 1.00 is exactly right">Ratio</th></tr></thead>
       <tbody>${t.terms.map(termRow).join("")}</tbody></table>`;
 
+  // Where the figures are wrong, not just how far. By what the player scored:
+  // an average miss can hide a figure that is close on every blank and far on
+  // every haul, and the hauls are what win a gameweek.
+  const buckets = (t.buckets || []).filter(b => b.n > 0);
+  const bucketTable = buckets.length ? `<table class="mini">
+      <thead>
+        <tr><th></th><th></th><th colspan="2">Gave</th><th></th>
+          <th colspan="2" title="Mean absolute error">Average miss</th></tr>
+        <tr><th>Scored</th><th>Players</th><th>Model</th><th>FPL</th><th>Actual</th><th>Model</th><th>FPL</th></tr>
+      </thead>
+      <tbody>${buckets.map(b => `<tr><td>${b.bucket}</td><td class="num">${b.n}</td>
+        <td class="num">${b.model_mean.toFixed(2)}</td><td class="num">${b.fpl_mean.toFixed(2)}</td>
+        <td class="num">${b.actual_mean.toFixed(2)}</td>
+        <td class="num ${b.model_mae < b.fpl_mae ? "better" : ""}">${b.model_mae.toFixed(2)}</td>
+        <td class="num ${b.fpl_mae < b.model_mae ? "better" : ""}">${b.fpl_mae.toFixed(2)}</td></tr>`).join("")}</tbody></table>` : "";
+
+  // The playing-time call, in bands of the appearance points the model gave. The
+  // middle bands are where minutes are unsettled and only team news can move them.
+  const bands = (t.minutes || []).filter(m => m.n > 0);
+  const minutesTable = bands.length ? `<table class="mini">
+      <thead><tr><th title="Appearance points the model gave: a point for playing, a second for an hour">Model gave</th>
+        <th>Players</th><th>Predicted</th><th>Scored</th><th>Did not play</th><th>60+ min</th></tr></thead>
+      <tbody>${bands.map(m => `<tr><td>${m.band}</td><td class="num">${m.n}</td>
+        <td class="num">${m.predicted.toFixed(2)}</td><td class="num">${m.actual.toFixed(2)}</td>
+        <td class="num">${Math.round(m.none * 100)}%</td><td class="num">${Math.round(m.hour * 100)}%</td></tr>`).join("")}</tbody></table>` : "";
+
+  // The same ratio as above, split by position. A keeper's and a defender's clean
+  // sheet are one team event, so their ratios should match.
+  const byPos = t.byPosition || [];
+  const posCell = (term, pos) => {
+    const r = byPos.find(x => x.term === term && x.position === pos);
+    if (!r) return `<td class="num"></td>`;
+    const ratio = Math.abs(r.predicted) > 1e-9 ? r.actual / r.predicted : null;
+    const off = ratio !== null && Math.abs(r.predicted) >= 10 && (ratio < 0.8 || ratio > 1.25);
+    return `<td class="num ratio ${off ? "off" : ""}" title="predicted ${r.predicted.toFixed(0)}, scored ${r.actual.toFixed(0)}">${ratio === null ? "—" : ratio.toFixed(2)}</td>`;
+  };
+  const posTerms = [...new Set(byPos.map(r => r.term))];
+  const posTable = posTerms.length ? `<table class="mini">
+      <thead><tr><th>Scoring term</th>${POSITIONS.map(p => `<th>${p}</th>`).join("")}</tr></thead>
+      <tbody>${posTerms.map(term => `<tr><td>${TERM_LABELS[term] || term}</td>${POSITIONS.map(p => posCell(term, p)).join("")}</tr>`).join("")}</tbody></table>` : "";
+
   box.innerHTML = `<div class="headline">${headline}</div>
     <h3>Model against FPL, week by week</h3>${games}
     <h3>Points handed out against points scored</h3>${terms}
     <div class="note">Summed over every predicted player. A ratio near 1.00 means the model hands out the right
       amount of that kind of point; amber marks a term more than 25% off.
-      ${t.gws.length < 6 ? `With ${t.gws.length} gameweek${t.gws.length === 1 ? "" : "s"} reviewed this is a first look — one round of clean sheets or goals swings it a lot.` : ""}</div>`;
+      ${t.gws.length < 6 ? `With ${t.gws.length} gameweek${t.gws.length === 1 ? "" : "s"} reviewed this is a first look — one round of clean sheets or goals swings it a lot.` : ""}</div>
+    ${posTable ? `<h3>The same, by position</h3>${posTable}
+      <div class="note">Scored ÷ predicted. Hover a figure for the points behind it.</div>` : ""}
+    ${bucketTable ? `<h3>Against what the player scored</h3>${bucketTable}
+      <div class="note">Players with recent minutes. Bucketed on the outcome, so every figure reads low at the top and
+        high at the bottom; what matters is the gap between the model and FPL on the same players.</div>` : ""}
+    ${minutesTable ? `<h3>Playing time</h3>${minutesTable}
+      <div class="note">Appearance points run from 0 (surely out) to 2 (on for an hour). Equal predicted and scored
+        figures mean the call was right on average; the middle bands are the ones team news would settle.</div>` : ""}`;
 }
 
 /* =====================================================================

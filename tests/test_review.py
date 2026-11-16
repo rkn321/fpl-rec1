@@ -24,8 +24,11 @@ from src.review import (
     auto_subs,
     best_xi,
     calibration,
+    calibration_by_position,
     head_to_head,
     join_actuals,
+    minutes_calibration,
+    outcome_buckets,
     parse_live,
     render,
     settle,
@@ -255,6 +258,70 @@ def test_head_to_head_scores_both_on_the_same_players(config) -> None:
     assert h.loc["all", "model_xi"] == h.loc["5", "model_xi"] + h.loc["6", "model_xi"]
 
 
+def test_outcome_buckets_split_on_the_outcome_and_score_the_same_players() -> None:
+    rows = pd.DataFrame({
+        "minutes_r3": [90.0] * 5 + [0.0],
+        "actual": [0.0, -2.0, 2.0, 4.0, 9.0, 9.0],
+        "expected_points": [1.0, 1.0, 2.0, 4.0, 5.0, 0.0],
+        "xp_fpl": [2.0, 2.0, 2.0, 2.0, 2.0, 0.0],
+    })
+    b = outcome_buckets(rows)
+    assert list(b.index) == ["0 or less", "1-2", "3-4", "5+"]
+    assert list(b["n"]) == [2, 1, 1, 1], "the player with no recent minutes is left out of every bucket"
+    assert b.loc["0 or less", "actual_mean"] == pytest.approx(-1.0)
+    assert b.loc["0 or less", "model_mae"] == pytest.approx(2.0)     # |1-0| and |1-(-2)|
+    assert b.loc["5+", "model_mae"] == pytest.approx(4.0) and b.loc["5+", "fpl_mae"] == pytest.approx(7.0)
+
+
+def test_outcome_buckets_tolerate_a_log_with_nothing_to_compare() -> None:
+    rows = pd.DataFrame({"minutes_r3": [0.0], "actual": [0.0], "expected_points": [0.0], "xp_fpl": [0.0]})
+    b = outcome_buckets(rows)
+    assert int(b["n"].sum()) == 0 and b["model_mae"].isna().all()
+
+
+def test_minutes_calibration_bands_hold_every_player_once() -> None:
+    rows = pd.DataFrame({
+        "appearance": [0.0, 0.5, 0.5, 1.0, 2.0, 2.0],
+        "act_appearance": [0.0, 0.0, 2.0, 1.0, 2.0, 2.0],
+        "minutes": [0, 0, 90, 30, 90, 90],
+    })
+    m = minutes_calibration(rows)
+    assert int(m["n"].sum()) == len(rows)
+    assert list(m["n"]) == [1, 2, 1, 0, 2]
+    doubtful = m.loc["0.25-0.75"]
+    assert doubtful["predicted"] == pytest.approx(0.5) and doubtful["actual"] == pytest.approx(1.0)
+    assert doubtful["none"] == pytest.approx(0.5) and doubtful["hour"] == pytest.approx(0.5)
+
+
+def test_calibration_by_position_shows_a_term_wrong_for_one_position_only() -> None:
+    rows = pd.DataFrame({
+        "position": ["GK", "DEF", "DEF", "FWD"],
+        "clean_sheet": [1.0, 0.5, 0.5, 0.0], "act_clean_sheet": [1.0, 2.0, 2.0, 0.0],
+        "goals": [0.0, 0.0, 0.0, 1.0], "act_goals": [0.0, 0.0, 0.0, 0.5],
+    })
+    p = calibration_by_position(rows)
+    assert p.loc[("clean_sheet", "GK"), "ratio"] == pytest.approx(1.0)
+    assert p.loc[("clean_sheet", "DEF"), "ratio"] == pytest.approx(4.0)
+    assert p.loc[("goals", "FWD"), "ratio"] == pytest.approx(0.5)
+    assert ("clean_sheet", "FWD") not in p.index, "nothing predicted and nothing scored: no row"
+    assert ("goals", "GK") not in p.index
+
+
+def test_track_record_carries_where_the_figures_are_wrong_and_is_valid_json(config) -> None:
+    import json
+
+    from src.frontend import track_record
+
+    table = gameweek_table(5)
+    table["appearance"], table["act_appearance"] = 1.5, 2.0
+    append_log(config, 5, "2099-00", table)
+    t = track_record(config)
+    for key in ("buckets", "minutes", "byPosition"):
+        assert t[key], key
+    assert {r["position"] for r in t["byPosition"]} == {"GK", "DEF", "MID", "FWD"}
+    json.dumps(t, allow_nan=False)   # a bare NaN would break the page's script
+
+
 # -- rendering ------------------------------------------------------------------------
 
 def test_render_covers_every_section_and_survives_a_cp1252_console(config) -> None:
@@ -270,10 +337,13 @@ def test_render_covers_every_section_and_survives_a_cp1252_console(config) -> No
         provisional=True, table=table, squad=squad,
         squad_rows=squad_table(squad, table, pd.DataFrame()),
         calibration=calibration(log_rows), head_to_head=head_to_head(log_rows),
+        buckets=outcome_buckets(log_rows), minutes=minutes_calibration(log_rows),
+        by_position=calibration_by_position(log_rows),
     )
     text = render(review)
     for section in ("Gameweek 5 review", "Your squad", "Biggest over-deliveries",
-                    "Model against FPL", "Scoring terms", "bonus can still move"):
+                    "Model against FPL", "Scoring terms", "bonus can still move",
+                    "By what the player scored", "Playing time", "by position"):
         assert section in text, section
     assert "18 Sep 15:16" in text
     text.encode("cp1252")   # no arrows or other characters a Windows console cannot print

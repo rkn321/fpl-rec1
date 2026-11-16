@@ -305,11 +305,29 @@ the armband applied by FPL's rules), the biggest over- and under-deliveries
 across the pool, the model against FPL's own figure on the same players, and
 every scoring term's predicted total against its actual one.
 
-The two summaries run season to date. Each review appends every player's
+The summaries run season to date. Each review appends every player's
 predicted and actual terms to `data/processed/review_log.csv` (reviewing a
 gameweek again replaces its rows), and those totals — not one Saturday — are
 what a claim like "the bonus term overweights small samples" should be tested
 against.
+
+Three of them say *where* the figures are wrong rather than how far, and are
+repeated in the page's Track record tab:
+
+- **Terms by position.** The all-player ratio for a term can hide a position
+  that is wrong behind one that is right. A keeper's and a defender's clean
+  sheet are the same team event, so their ratios should agree; over GW5–10 they
+  did not (1.18 against 1.82).
+- **By what the player scored.** The model's and FPL's figure against what
+  players who scored 0 or less, 1–2, 3–4 and 5+ actually got, over players with
+  recent minutes — the bucketing the [OpenFPL paper](https://arxiv.org/abs/2508.09992)
+  uses. Bucketed on the outcome, so every figure reads low at the top and high
+  at the bottom for any forecaster; the gap between the model and FPL on the
+  same players is the information.
+- **Playing time.** Predicted against actual appearance points, in five bands.
+  Calibrated on average in every band; what it cannot do is split the middle
+  bands, where over half of a 0.25–0.75 band did not play at all. That is what
+  team news would settle.
 
 It scores the stored prediction where there is one. Where there is not (any
 gameweek before stored predictions existed) it rebuilds the model as of that

@@ -332,7 +332,9 @@ def track_record(config: Config) -> dict[str, Any] | None:
     it prints from, so the page and the CLI can never disagree. None until the
     first gameweek is reviewed.
     """
-    from .review import calibration, head_to_head, log_path
+    from .review import (
+        calibration, calibration_by_position, head_to_head, log_path, minutes_calibration, outcome_buckets,
+    )
 
     path = log_path(config)
     if not path.exists():
@@ -352,6 +354,21 @@ def track_record(config: Config) -> dict[str, Any] | None:
         for term, r in calibration(rows).to_dict(orient="index").items()
     ]
 
+    # Where the figures are wrong, not just how far: by what was scored, by how
+    # settled the playing-time call was, and by position.
+    buckets = [
+        {"bucket": label, **{k: (int(v) if k == "n" else _clean(v, 3)) for k, v in r.items()}}
+        for label, r in outcome_buckets(rows).to_dict(orient="index").items()
+    ]
+    minutes = [
+        {"band": label, **{k: (int(v) if k == "n" else _clean(v, 3)) for k, v in r.items()}}
+        for label, r in minutes_calibration(rows).to_dict(orient="index").items()
+    ]
+    by_position = [
+        {"term": term, "position": position, "predicted": _clean(r["predicted"], 1), "actual": _clean(r["actual"], 1)}
+        for (term, position), r in calibration_by_position(rows).to_dict(orient="index").items()
+    ]
+
     # Per player, only where there was something to be right or wrong about:
     # the hundreds of fringe players predicted at ~0 who did not play add bulk
     # to every page and nothing to read.
@@ -366,6 +383,9 @@ def track_record(config: Config) -> dict[str, Any] | None:
         "gws": sorted(int(g) for g in rows["gw"].unique()),
         "games": games,
         "terms": terms,
+        "buckets": buckets,
+        "minutes": minutes,
+        "byPosition": by_position,
         "players": players,
     }
 
