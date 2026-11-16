@@ -9,6 +9,7 @@ FPL's own figure is computed on the same players for both.
 from __future__ import annotations
 
 import textwrap
+from dataclasses import replace
 
 import pandas as pd
 import pytest
@@ -27,6 +28,7 @@ from src.review import (
     calibration_by_position,
     head_to_head,
     join_actuals,
+    log_path,
     minutes_calibration,
     outcome_buckets,
     parse_live,
@@ -239,6 +241,28 @@ def test_the_log_replaces_a_reviewed_gameweek_rather_than_adding_it(config) -> N
     assert (week5["expected_points"] - week5["actual"]).round(9).eq(1.0).all(), "the second review won"
 
 
+def test_the_log_records_which_build_made_each_week(config) -> None:
+    append_log(config, 5, "2099-00", gameweek_table(5), odds_priced="unpriced", fingerprint="aaa")
+    rows = append_log(config, 6, "2099-00", gameweek_table(6), odds_priced="priced", fingerprint="bbb")
+    assert set(rows.loc[rows["gw"] == 5, "odds_priced"]) == {"unpriced"}
+    assert set(rows.loc[rows["gw"] == 6, "fingerprint"]) == {"bbb"}
+    again = append_log(config, 5, "2099-00", gameweek_table(5), odds_priced="priced", fingerprint="ccc")
+    assert set(again.loc[again["gw"] == 5, "fingerprint"]) == {"ccc"}, "re-reviewing a week replaces its stamp"
+    assert set(again.loc[again["gw"] == 6, "fingerprint"]) == {"bbb"}
+
+
+def test_rows_logged_before_builds_were_recorded_read_as_unknown(config) -> None:
+    """The log on disk predates the build columns; those weeks are not guessed at."""
+    old = gameweek_table(5).rename_axis("player_id").reset_index().assign(season="2099-00", gw=5)
+    config.ensure_dirs()
+    old.to_csv(log_path(config), index=False)            # no odds_priced / fingerprint columns
+    rows = append_log(config, 6, "2099-00", gameweek_table(6), odds_priced="priced", fingerprint="bbb")
+    assert set(rows.loc[rows["gw"] == 5, ["odds_priced", "fingerprint"]].to_numpy().ravel()) == {"unknown"}
+    assert len(rows) == 2 * len(gameweek_table(5)), "nothing was dropped"
+    assert list(rows.columns[:7]) == ["season", "gw", "player_id", "name", "position", "odds_priced", "fingerprint"]
+    assert (rows.loc[rows["gw"] == 5, "expected_points"].notna()).all(), "the old week's figures survived the rewrite"
+
+
 def test_calibration_sums_each_term(config) -> None:
     log_rows = append_log(config, 5, "2099-00", gameweek_table(5))
     c = calibration(log_rows)
@@ -346,4 +370,7 @@ def test_render_covers_every_section_and_survives_a_cp1252_console(config) -> No
                     "By what the player scored", "Playing time", "by position"):
         assert section in text, section
     assert "18 Sep 15:16" in text
+    assert "model component, odds priced" not in text, "a review with no stamp says nothing about odds"
+    stamped = render(replace(review, odds_priced="unpriced", fingerprint="abc123def456"))
+    assert "model component (abc123def456), odds unpriced" in stamped
     text.encode("cp1252")   # no arrows or other characters a Windows console cannot print

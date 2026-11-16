@@ -398,6 +398,10 @@ def squad_table(squad: Squad, table: pd.DataFrame, actual: pd.DataFrame) -> pd.D
 # -- the running log ---------------------------------------------------------------
 
 LOG_ID_COLS = ["season", "gw", "player_id", "name", "position"]
+# Which build made a row: whether the week's odds were priced, and the model code.
+# "unknown" for rows logged before these were recorded — the log mixes builds, and
+# an honest blank is better than a guess about which.
+LOG_BUILD_COLS = ["odds_priced", "fingerprint"]
 LOG_VALUE_COLS = ["minutes_r3", "xp_fpl", "expected_points", "actual", "minutes"]
 
 
@@ -405,15 +409,20 @@ def log_path(config: Config) -> Path:
     return config.processed_dir / LOG_NAME
 
 
-def append_log(config: Config, gw: int, season: str, table: pd.DataFrame) -> pd.DataFrame:
+def append_log(
+    config: Config, gw: int, season: str, table: pd.DataFrame,
+    odds_priced: str | None = None, fingerprint: str | None = None,
+) -> pd.DataFrame:
     """Add this gameweek's predicted and actual terms to the running log.
 
     Idempotent per gameweek: reviewing it again — after bonus is confirmed,
-    say — replaces its rows rather than counting them twice.
+    say — replaces its rows rather than counting them twice. `odds_priced` and
+    `fingerprint` say which build the prediction came from.
     """
     rows = table.rename_axis("player_id").reset_index()
     rows["season"], rows["gw"] = season, int(gw)
-    cols = LOG_ID_COLS + LOG_VALUE_COLS
+    rows["odds_priced"], rows["fingerprint"] = odds_priced or "unknown", fingerprint or "unknown"
+    cols = LOG_ID_COLS + LOG_BUILD_COLS + LOG_VALUE_COLS
     cols += [t for t in POINTS_TERMS] + [f"act_{t}" for t in ACTUAL_TERMS]
     rows = rows.reindex(columns=cols)
 
@@ -421,7 +430,8 @@ def append_log(config: Config, gw: int, season: str, table: pd.DataFrame) -> pd.
     if path.exists():
         existing = pd.read_csv(path)
         existing = existing[~((existing["season"] == season) & (existing["gw"] == int(gw)))]
-        rows = pd.concat([existing, rows], ignore_index=True)
+        rows = pd.concat([existing, rows], ignore_index=True).reindex(columns=cols)
+        rows[LOG_BUILD_COLS] = rows[LOG_BUILD_COLS].fillna("unknown")
     rows = rows.sort_values(["season", "gw", "player_id"]).reset_index(drop=True)
     config.ensure_dirs()
     rows.to_csv(path, index=False)
@@ -600,6 +610,8 @@ class Review:
     buckets: pd.DataFrame = field(default_factory=pd.DataFrame)           # error by what was scored
     minutes: pd.DataFrame = field(default_factory=pd.DataFrame)           # the playing-time call
     by_position: pd.DataFrame = field(default_factory=pd.DataFrame)       # terms split by position
+    odds_priced: str | None = None  # "priced" / "unpriced" for the stored build; None if not recorded
+    fingerprint: str | None = None  # the model code that made it
 
     @property
     def reconstructed(self) -> bool:
@@ -635,9 +647,11 @@ def run(
 
     notes: list[str] = []
     stored = load_predictions(config, gw)
+    build: dict[str, str] = {}
     if stored is not None:
         record, meta = stored
         model, generated_at = meta.get("model", model), meta.get("generated_at")
+        build = {k: meta[k] for k in LOG_BUILD_COLS if meta.get(k, "unknown") != "unknown"}
     else:
         log.info("no stored prediction for gameweek %d; rebuilding it from the snapshot", gw)
         (record, notes), generated_at = reconstruct_predictions(config, client, gw, model=model), None
@@ -652,7 +666,7 @@ def run(
     table = join_actuals(record, actual, fixture_labels(client, gw))
 
     # Every predicted player goes in the log; the squad is a view onto it.
-    logged = append_log(config, gw, season, table)
+    logged = append_log(config, gw, season, table, **build)
     this_season = logged[logged["season"] == season]
 
     minutes = actual["minutes"].to_dict()
@@ -668,6 +682,7 @@ def run(
 
     return Review(
         gw=gw, season=season, model=model, generated_at=generated_at, provisional=provisional,
+        odds_priced=build.get("odds_priced"), fingerprint=build.get("fingerprint"),
         table=table, squad=squad,
         squad_rows=squad_table(squad, table, actual) if squad is not None else None,
         calibration=calibration(this_season), head_to_head=head_to_head(this_season),
@@ -764,7 +779,10 @@ def render(review: Review, top: int = 8) -> str:
         out.append(f"prediction: rebuilt from the gameweek {review.gw} snapshot (none was stored before the deadline)")
     else:
         made = pd.Timestamp(review.generated_at)
-        out.append(f"prediction: as stored {made:%a %d %b %H:%M} UTC, model {review.model}")
+        build = [review.model + (f" ({review.fingerprint})" if review.fingerprint else "")]
+        if review.odds_priced:
+            build.append("odds " + review.odds_priced)
+        out.append(f"prediction: as stored {made:%a %d %b %H:%M} UTC, model {', '.join(build)}")
     for note in review.notes:
         out.append(f"note: {note}")
     if review.provisional:

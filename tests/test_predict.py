@@ -113,6 +113,57 @@ def test_rerunning_before_the_deadline_overwrites(config) -> None:
     assert (loaded["expected_points"] == 1.0).all(), "the later run has the later team news"
 
 
+def test_a_stored_prediction_says_which_build_made_it(config) -> None:
+    record = prediction_record(target_rows(), FixedBreakdown())
+    now = DEADLINE - pd.Timedelta(hours=1)
+    save_predictions(record, 5, config, "component", DEADLINE, now=now, odds_priced=False, fingerprint="abc123")
+    loaded, meta = load_predictions(config, 5)
+    assert meta["odds_priced"] == "unpriced" and meta["fingerprint"] == "abc123"
+    assert not {"odds_priced", "fingerprint", "model", "generated_at"} & set(loaded.columns), "build, not player, data"
+
+    save_predictions(record, 6, config, "component", DEADLINE, now=now, odds_priced=True, fingerprint="abc123")
+    assert load_predictions(config, 6)[1]["odds_priced"] == "priced"
+
+    # Not told: recorded as unknown rather than assumed.
+    save_predictions(record, 7, config, "component", DEADLINE, now=now)
+    meta = load_predictions(config, 7)[1]
+    assert meta["odds_priced"] == "unknown" and meta["fingerprint"] == "unknown"
+
+
+def test_a_file_stored_before_the_build_columns_existed_still_reads(config) -> None:
+    record = prediction_record(target_rows(), FixedBreakdown())
+    out = record.reset_index().assign(model="component", generated_at="2099-09-18T15:00:00+00:00")
+    config.ensure_dirs()
+    out.to_csv(predictions_path(config, 5), index=False)
+    loaded, meta = load_predictions(config, 5)
+    assert meta == {"model": "component", "generated_at": "2099-09-18T15:00:00+00:00"}
+    pd.testing.assert_frame_equal(loaded[record.columns], record, check_dtype=False)
+
+
+def test_the_first_build_of_a_gameweek_is_kept_beside_the_last(config) -> None:
+    record = prediction_record(target_rows(), FixedBreakdown())
+    early = record.assign(expected_points=1.0)
+    late = record.assign(expected_points=2.0)
+    latest = record.assign(expected_points=3.0)
+    save_predictions(early, 5, config, "component", DEADLINE, now=DEADLINE - pd.Timedelta(days=3), odds_priced=False)
+    assert load_predictions(config, 5, first=True) is None, "nothing to keep aside until a second build replaces it"
+    save_predictions(late, 5, config, "component", DEADLINE, now=DEADLINE - pd.Timedelta(days=1), odds_priced=True)
+    save_predictions(latest, 5, config, "component", DEADLINE, now=DEADLINE - pd.Timedelta(hours=1), odds_priced=True)
+
+    first, first_meta = load_predictions(config, 5, first=True)
+    last, last_meta = load_predictions(config, 5)
+    assert (first["expected_points"] == 1.0).all() and first_meta["odds_priced"] == "unpriced"
+    assert (last["expected_points"] == 3.0).all() and last_meta["odds_priced"] == "priced"
+
+
+def test_a_build_after_the_deadline_leaves_the_first_alone(config) -> None:
+    record = prediction_record(target_rows(), FixedBreakdown())
+    save_predictions(record, 5, config, "component", DEADLINE, now=DEADLINE - pd.Timedelta(days=2))
+    save_predictions(record, 5, config, "component", DEADLINE, now=DEADLINE - pd.Timedelta(hours=1))
+    assert save_predictions(record, 5, config, "component", DEADLINE, now=DEADLINE) is None
+    assert load_predictions(config, 5, first=True) is not None
+
+
 def test_nothing_stored_reads_as_none(config) -> None:
     assert load_predictions(config, 9) is None
 

@@ -11,7 +11,11 @@ Every prediction made before its deadline is stored as
 `data/processed/predictions_gw{N}.csv`. A rerun before the same deadline
 overwrites — the later run has the later team news — and a run after it never
 does, so the file is always what the model said in time to act on. That file
-is what `fpl review` scores.
+is what `fpl review` scores. The first build of a gameweek is kept beside it as
+`predictions_gw{N}_first.csv`, so a week's no-odds build and its priced one can
+be scored against each other. Every file says whether the week's odds were
+priced and which model code made it, because a log that mixes builds cannot be
+read without that.
 
 Fitting is the slow part — about 45 seconds for the component model — and the
 training data only changes when a gameweek finishes, so a fitted model is kept
@@ -25,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import pickle
+import shutil
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
@@ -41,6 +46,9 @@ from .models.combine import POINTS_TERMS
 log = logging.getLogger(__name__)
 
 PREDICTIONS_NAME = "predictions_gw{gw}.csv"
+FIRST_PREDICTIONS_NAME = "predictions_gw{gw}_first.csv"
+# Columns stored beside the record that describe the build, not any player.
+META_COLS = ("model", "generated_at", "odds_priced", "fingerprint")
 
 # Quantities that add across a double gameweek, alongside the points terms.
 SUMMED = ("expected_points", *POINTS_TERMS, "expected_minutes")
@@ -183,8 +191,14 @@ def fit_predict(
     return prediction_record(target.copy(), predictor)
 
 
-def predictions_path(config: Config, gw: int) -> Path:
-    return config.processed_dir / PREDICTIONS_NAME.format(gw=int(gw))
+def predictions_path(config: Config, gw: int, first: bool = False) -> Path:
+    name = FIRST_PREDICTIONS_NAME if first else PREDICTIONS_NAME
+    return config.processed_dir / name.format(gw=int(gw))
+
+
+def code_fingerprint() -> str:
+    """A short name for the model code, stamped on every stored prediction."""
+    return _code_fingerprint()[:12]
 
 
 def save_predictions(
@@ -194,8 +208,14 @@ def save_predictions(
     model: str,
     deadline: pd.Timestamp | None,
     now: pd.Timestamp | None = None,
+    odds_priced: bool | None = None,
+    fingerprint: str | None = None,
 ) -> Path | None:
     """Store the record, unless its deadline has passed. Returns the path written, or None.
+
+    `odds_priced` and `fingerprint` say which build this was; None is stored as
+    "unknown" rather than guessed. The first build of a gameweek is copied aside
+    before a later one replaces it.
 
     After the deadline the API's inputs — prices, availability, FPL's own
     figure — describe the *next* gameweek, so a rerun would overwrite what the model said in time with
@@ -208,22 +228,34 @@ def save_predictions(
         return None
     config.ensure_dirs()
     path = predictions_path(config, gw)
+    first = predictions_path(config, gw, first=True)
+    if path.exists() and not first.exists():
+        shutil.copyfile(path, first)
     out = record.reset_index()
     out["model"] = model
     out["generated_at"] = now.isoformat()
+    out["odds_priced"] = "unknown" if odds_priced is None else ("priced" if odds_priced else "unpriced")
+    out["fingerprint"] = fingerprint or "unknown"
     out.to_csv(path, index=False)
     log.info("stored gameweek %d predictions: %s", gw, path)
     return path
 
 
-def load_predictions(config: Config, gw: int) -> tuple[pd.DataFrame, dict[str, str]] | None:
-    """The stored record for `gw` and its `{model, generated_at}`, or None."""
-    path = predictions_path(config, gw)
+def load_predictions(
+    config: Config, gw: int, first: bool = False
+) -> tuple[pd.DataFrame, dict[str, str]] | None:
+    """The stored record for `gw` and its build metadata, or None.
+
+    The metadata is `{model, generated_at, odds_priced, fingerprint}`, each
+    present only if the file has it — files stored before the last two were
+    added do not. `first=True` reads the gameweek's first build instead of its last.
+    """
+    path = predictions_path(config, gw, first=first)
     if not path.exists():
         return None
     df = pd.read_csv(path)
-    meta = {k: str(df[k].iloc[0]) for k in ("model", "generated_at") if k in df and len(df)}
-    df = df.drop(columns=[c for c in ("model", "generated_at") if c in df])
+    meta = {k: str(df[k].iloc[0]) for k in META_COLS if k in df and len(df)}
+    df = df.drop(columns=[c for c in META_COLS if c in df])
     df = df.set_index(df["player_id"].astype(int)).drop(columns=["player_id"])
     df.index.name = "player_id"
     return df, meta
@@ -254,7 +286,11 @@ def predict_gameweek(
     )
 
     deadline = deadlines(client).get(gw)
-    stored = save_predictions(record, gw, config, model, deadline) if save else None
     priced = odds_priced(frame[(frame["season"] == config.season_current) & (frame["gw"] == gw)])
+    stored = (
+        save_predictions(record, gw, config, model, deadline,
+                         odds_priced=priced, fingerprint=code_fingerprint())
+        if save else None
+    )
     return GameweekPrediction(gw=gw, model=model, record=record, deadline=deadline, stored=stored,
                               odds_priced=priced)
