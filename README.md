@@ -720,9 +720,15 @@ against 0.746). Ranking the whole pool is mostly ranking who plays, which is
 exactly what that baseline measures and what the model, without team news, can
 only infer from lagged minutes.
 
-Whether it beats FPL's own *pre-deadline* figure is not yet known. There is one
-clean gameweek of that figure (2026-27 GW5, from the snapshot); `fpl review`
-keeps the running comparison from there on.
+Against FPL's own *pre-deadline* figure, `fpl review` keeps the running
+comparison from 2026-27 GW5, on players with recent minutes. Over GW5–10, before
+the [clean-sheet change](#clean-sheets-the-market-and-a-team-model-that-saw-one-player):
+average miss 1.76 against FPL's 2.01 (closer in all six weeks), ranking within
+position 0.52 against 0.44, and the best XI picked from the whole pool 284 real
+points against FPL's 299 — the model's was ahead in three of the six weeks. On
+players who went on to score 5 or more the two are level (average miss 4.89
+against 4.67); everywhere else the model is closer. Six gameweeks is a first
+look, not a verdict.
 
 ### The leak in FPL's historical expected points
 
@@ -780,6 +786,65 @@ has none for the week it predicts. Rather than hand a model trained with odds a
 blank, `predict` falls back to the same model fitted without them — the variant
 measured above — and the page and `fpl predict` say so. Rebuild once the week's
 odds are out.
+
+### Clean sheets: the market, and a team model that saw one player
+
+Found from the review log, not the backtest. Over GW5–10 of 2026-27 the clean
+sheet points scored were **1.77 times** the points predicted — 1.18 for keepers,
+1.82 for defenders, 2.43 for midfielders — though a keeper's and a defender's
+clean sheet are one team event. The stored GW6, GW8 and GW9 predictions showed
+it directly: a team's defenders were given a lower clean-sheet chance than its
+own keeper in 15 of 20, 14 of 19 and 16 of 19 teams.
+
+Two causes, both in the team-level models. `DefenceModel` trained the clean
+sheet and goals-conceded models on `drop_duplicates(season, team_id,
+fixture_id)`: one arbitrary squad member's row per match (48% of them a player
+who did not play, 35 minutes on average), carrying his own position, minutes
+and form, and then predicted for every player from his own row. And even for a
+team's keeper, the tree's clean-sheet probability scored worse than a constant
+guess. Brier score over 498 keeper-matches with odds, lower is better:
+
+| P(clean sheet) from | Brier | mean predicted (actual 23.5%) |
+|---|---|---|
+| a constant 24% (the four-season rate) | 0.180 | 24.0% |
+| the tree model as it was | 0.197 | 19.0% |
+| the tree on team-level features only | 0.188 | 19.2% |
+| the market: a Poisson, exp(−expected goals against) | **0.166** | 25.0% |
+
+Adopted, in `src/models/defence.py`: the team models see team-level features
+only (`team_level`), so every player of a side gets the same figure; and where a
+row carries both odds columns the clean-sheet chance is a two-feature logistic
+fit on the bookmakers' expected goals for and against, and the goals conceded
+are the market's expected goals against times one fitted constant. A row with no
+odds — a week whose prices are not out, and the odds-free fit the page falls
+back to — keeps the team-level trees.
+
+Walk-forward against the model before, on the decision grid (every other
+gameweek of 2024-25 and GW2–6 of 2025-26, 22 gameweeks) and on the rest of
+2025-26 as a holdout (GW7–38, 32 gameweeks), which was not used to choose
+between variants. Differences are the mean over gameweeks with a 95% interval
+from resampling them:
+
+| | decision grid | holdout |
+|---|---|---|
+| clean-sheet points, actual / predicted: GK, DEF, MID | 1.25, 1.48, 2.12 → 1.03, 1.03, 1.23 | 1.26, 1.55, 2.00 → 1.01, 1.09, 1.15 |
+| clean-sheet Brier, keeper-matches | 0.201 → 0.168 (457) | 0.189 → 0.174 (656) |
+| rank within position | +0.013 [+0.006, +0.020] | +0.006 [+0.000, +0.012] |
+| RMSE, players with recent minutes | −0.025 [−0.039, −0.013] | −0.017 [−0.025, −0.009] |
+| RMSE, defenders | −0.056 [−0.085, −0.029] | −0.040 [−0.058, −0.020] |
+| top-XI real points a player | +0.24 [−0.03, +0.52] | +0.34 [+0.04, +0.64] |
+| MAE, players with recent minutes | +0.020 [+0.006, +0.033] | +0.019 [+0.011, +0.027] |
+
+MAE is worse by about 1%. That is what correcting a downward bias on a skewed
+target costs: MAE is minimised by the median, and the model's job is the mean,
+which is what RMSE and the ranking measure. The tables above are from before
+this change; the model's MAE is a little higher and its ranking a little better
+than they show.
+
+Not done: a week without odds still uses the trees, and Elo-implied expected
+goals — the market's replacement for exactly those weeks, and for the 2–5 weeks
+ahead the page projects — is the obvious fallback. A match with odds also still
+ignores that the market's price is a Friday one, before team news.
 
 ### Fixtures beyond next week: Elo, not FPL's difficulty
 
